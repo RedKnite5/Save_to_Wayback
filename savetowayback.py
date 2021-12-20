@@ -1,6 +1,6 @@
-#!/mnt/c/Users/RedKnite/AppData/Local/Programs/Python/Python38/python.exe
 # save_to_wayback.py
-# last used 1/9/21
+# used 1/9/21
+# last used 12/20/21
 
 import sys
 import time
