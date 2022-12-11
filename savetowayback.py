@@ -116,12 +116,17 @@ def get_nh(url):
 
 
 def add_link(url):
+	last_url = None
 	while url:
 		delay = 50
 		errors = 0
 		while True:
 			try:
-				save.capture(url, user_agent="mr.awesome10000@gmail.com using savepagenow")
+				save.capture(
+					url,
+					user_agent="mr.awesome10000@gmail.com using savepagenow",
+					accept_cache=True
+				)
 				print(f"Saved: {url}")
 				time.sleep(30)
 				delay = 50
@@ -131,9 +136,8 @@ def add_link(url):
 				print(f"Error{errors}: {url}, {type(e)}: {e}")
 				delay += 650
 				time.sleep(delay)
-			
 
-
+		last_url = url
 		if url.startswith("https://www.fanfiction.net/"):
 			url = get_ffn(url)
 		elif url.startswith("https://forums.spacebattles.com/"):
@@ -146,17 +150,69 @@ def add_link(url):
 			url = get_nh(url)
 		else:
 			url = None
+	
+	return last_url
+
+
+def read_saved():
+	with open("saved.txt", "r") as save_file:
+		lines = list(save_file.readlines())
+	return lines
+
+def write_saved(lines, filename="saved.txt"):
+	with open(filename, "w") as save_file:
+		save_file.write("\n".join(lines))
+
+
+def is_updatatable(url):
+	"Or all possible failure conditions then invert the result"
+
+	not_up = False
+	not_up = not_up or url.startswith("https://nhentai.net/g/")
+
+	return not not_up
+
+def update_old(lines):
+	for index, preurl in enumerate(list(lines)):
+		url = preurl.strip()
+		if is_updatatable(url):
+			last = add_link(url)
+			if last:
+				lines[index] = last
+
+
+def main():
+	
+	lines = read_saved()
+	lines = [line.strip() for line in lines]
+	
+	try:
+		if "-u" in sys.argv:
+			update_old(lines)
+		
+		if "-f" in sys.argv:
+			with open("new_urls.txt", "r") as file:
+				for url in file.readlines():
+					last = add_link(url.strip())
+					if last:
+						lines.append(last)
+		else:
+			for url in sys.argv[1:]:
+				last = add_link(url)
+				if last:
+					lines.append(last)
+
+		lines = list(set(lines))
+	except:
+		write_saved(lines, filename="save_dump.txt")
+	else:
+		write_saved(lines)
+
 
 
 if __name__ == "__main__":
 	#time.sleep(1)
-	
-	if "-f" in sys.argv:
-		with open("url_list.txt", "r") as file:
-			for url in file.readlines():
-				add_link(url.strip())
-	else:
-		for url in sys.argv[1:]:
-			add_link(url)
+
+	main()
 
 
