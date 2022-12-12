@@ -13,7 +13,27 @@ import bs4
 import requests
 import savepagenow as save
 
-logging.basicConfig(filename='urls_saved.log', level=logging.INFO)
+SAMPLE_SIZE = 50
+WAIT = 20
+INCREMENT = 30
+
+# ao3
+
+def setup_logger(name, log_file, level=logging.INFO):
+    """To setup as many loggers as you want"""
+
+    handler = logging.FileHandler(log_file)
+
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    logger.addHandler(handler)
+
+    return logger
+
+logger = setup_logger('first_logger', 'urls_saved.log')
+
+duration_logger = setup_logger('second_logger', 'durations.log')
+
 
 def ffn_btn(tag):
 	try:
@@ -133,14 +153,14 @@ def total_pages_imh(tag):
 	try:
 		assert tag.name == "span"
 		
-		logging.debug(f"{tag['class'] = }")
+		logger.debug(f"{tag['class'] = }")
 		assert tag["class"] == ["total_pages"]
 		return True
 	except (AssertionError, KeyError):
 		return False
 
 def get_imh(url):
-	logging.debug(f"Getting next imh style url from {url}")
+	logger.debug(f"Getting next imh style url from {url}")
 	
 	new_url = None
 	
@@ -160,7 +180,7 @@ def get_imh(url):
 	total_page_tag = soup.find(total_pages_imh)
 	pages = int(total_page_tag.text)
 	
-	logging.debug(f"imh total page count is {pages}")
+	logger.debug(f"imh total page count is {pages}")
 	
 	if soup.find_all(make_imh_checker(pages)):
 		return None
@@ -169,8 +189,9 @@ def get_imh(url):
 
 def add_link(url):
 	last_url = None
+
 	while url:
-		delay = 50
+		delay = 0
 		errors = 0
 		while True:
 			try:
@@ -191,11 +212,12 @@ def add_link(url):
 
 				delay = 50
 				time.sleep(120)
+
 				break
 			except Exception as e:
 				errors += 1
-				logging.error(f"Error{errors}: {url}, {e}")
-				delay += 650
+				logger.error(f"Error{errors}: {url}, {e}")
+				delay += INCREMENT
 				time.sleep(delay)
 
 		last_url = url
@@ -213,7 +235,7 @@ def add_link(url):
 			url = get_imh(url)
 		else:
 			url = None
-	
+
 	return last_url
 
 
@@ -278,7 +300,7 @@ def main():
 	else:
 		write_saved(lines)
 	finally:
-		logging.info("Stopping")
+		logger.info("Stopping")
 
 
 
