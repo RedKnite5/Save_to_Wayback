@@ -1,21 +1,26 @@
-#!/mnt/c/Users/RedKnite/AppData/Local/Programs/Python/Python38/python.exe
 # save_to_wayback.py
-# last used 1/9/21
+# used 1/9/21
+# last used 12/20/21
 
 import sys
 import time
+from functools import reduce
+from operator import or_
+import logging
 from urllib.parse import urljoin
 from urllib3.exceptions import ProtocolError
 import bs4
 import requests
 import savepagenow as save
 
+logging.basicConfig(filename='urls_saved.log', level=logging.INFO)
+
 def ffn_btn(tag):
 	try:
 		assert ["btn"] == tag["class"]
 		assert tag.text == "Next >"
 		return True
-	except (KeyError, AssertionError) as e:
+	except (KeyError, AssertionError):
 		return False
 
 def get_ffn(url):
@@ -37,7 +42,7 @@ def sb_btn(tag):
 		assert tag.text == "Next"
 		assert tag.name == "a"
 		return True
-	except (KeyError, AssertionError) as e:
+	except (KeyError, AssertionError):
 		return False
 
 def get_sb(url):
@@ -71,9 +76,8 @@ def qq_btn(tag):
 		assert ["text"] == tag["class"]
 		assert tag.text == "Next >"
 		return True
-	except (KeyError, AssertionError) as e:
+	except (KeyError, AssertionError):
 		return False
-
 
 def get_qq(url):
 	page = requests.get(url)
@@ -90,29 +94,77 @@ def get_qq(url):
 
 def check_nh(tag):
 	try:
-		assert tag.text == "404 – Not Found"
-		assert tag.name == "h1"
+		assert "404 – Not Found" in tag.text
 		return True
-	except AssertionError as e:
+	except AssertionError:
 		return False
 
-
 def get_nh(url):
-	page = requests.get(url)
-	soup = bs4.BeautifulSoup(page.text, "html.parser")
-	if soup.find_all(check_nh):
-		return None
-
 	id_len = len(url[22:].split("/")[0])
 
+	new_url = None
 	if url[22 + id_len + 1:].count("/") > 0:
 		parts = url.split("/")
 		parts[-2] = str(int(parts[-2]) + 1)
 		new_url = "/".join(parts)
-		return new_url
 	else:
-		return url + "1/"
+		new_url = url + "1/"
+	
+	page = requests.get(new_url)
+	soup = bs4.BeautifulSoup(page.text, "html.parser")
+	if soup.find_all(check_nh):
+		return None
+	return new_url
 
+
+def make_imh_checker(pages):
+	def check_imh(tag):
+		try:
+			assert tag.name == "span"
+			assert tag["class"] == ["current"]
+			assert int(tag.text) > pages
+			
+			return True
+		except (AssertionError, KeyError):
+			return False
+	return check_imh
+
+def total_pages_imh(tag):
+	try:
+		assert tag.name == "span"
+		
+		logging.debug(f"{tag['class'] = }")
+		assert tag["class"] == ["total_pages"]
+		return True
+	except (AssertionError, KeyError):
+		return False
+
+def get_imh(url):
+	logging.debug(f"Getting next imh style url from {url}")
+	
+	new_url = None
+	
+	if not url.endswith("/"):
+		url += "/"
+	
+	if "gallery" in url:
+		new_url = url.replace("gallery", "view") + "1/"
+	else:
+		parts = url.split("/")
+		parts[-2] = str(int(parts[-2]) + 1)
+		new_url = "/".join(parts)
+	
+	page = requests.get(new_url)
+	soup = bs4.BeautifulSoup(page.text, "html.parser")
+	
+	total_page_tag = soup.find(total_pages_imh)
+	pages = int(total_page_tag.text)
+	
+	logging.debug(f"imh total page count is {pages}")
+	
+	if soup.find_all(make_imh_checker(pages)):
+		return None
+	return new_url
 
 
 def add_link(url):
@@ -127,13 +179,22 @@ def add_link(url):
 					user_agent="mr.awesome10000@gmail.com using savepagenow",
 					accept_cache=True
 				)
-				print(f"Saved: {url}")
+
 				time.sleep(30)
+				print(f"Saved: {url}")
+				
+				logging.info(f"Saved: {url}")
 				delay = 50
+				break
+			except save.BlockedByRobots as e:
+				logging.critical(f"Error{errors} Skipping blocked by robots: {url}, {e}")
+
+				delay = 50
+				time.sleep(120)
 				break
 			except Exception as e:
 				errors += 1
-				print(f"Error{errors}: {url}, {type(e)}: {e}")
+				logging.error(f"Error{errors}: {url}, {e}")
 				delay += 650
 				time.sleep(delay)
 
@@ -148,6 +209,8 @@ def add_link(url):
 			url = get_qq(url)
 		elif url.startswith("https://nhentai.net/g/"):
 			url = get_nh(url)
+		elif url.startswith("https://imhentai.xxx/"):
+			url = get_imh(url)
 		else:
 			url = None
 	
@@ -164,13 +227,21 @@ def write_saved(lines, filename="saved.txt"):
 		save_file.write("\n".join(lines))
 
 
+def accumulator_factory_startswith(url):
+	def accumulator(boolean, start):
+		return boolean or url.startswith(start)
+	return accumulator
+
 def is_updatatable(url):
 	"Or all possible failure conditions then invert the result"
+	
+	not_updatable = [
+		"https://nhentai.net/g/",
+		"https://imhentai.xxx/"
+	]
+	
+	return not reduce(accumulator_factory_startswith(url), not_updatable)
 
-	not_up = False
-	not_up = not_up or url.startswith("https://nhentai.net/g/")
-
-	return not not_up
 
 def update_old(lines):
 	for index, preurl in enumerate(list(lines)):
@@ -182,7 +253,6 @@ def update_old(lines):
 
 
 def main():
-	
 	lines = read_saved()
 	lines = [line.strip() for line in lines]
 	
@@ -207,12 +277,15 @@ def main():
 		write_saved(lines, filename="save_dump.txt")
 	else:
 		write_saved(lines)
+	finally:
+		logging.info("Stopping")
 
 
 
 if __name__ == "__main__":
 	#time.sleep(1)
+	
+	logging.info("Starting")
 
 	main()
-
 
