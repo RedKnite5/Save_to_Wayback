@@ -11,7 +11,27 @@ import bs4
 import requests
 import savepagenow as save
 
-logging.basicConfig(filename='urls_saved.log', level=logging.INFO)
+SAMPLE_SIZE = 50
+WAIT = 20
+INCREMENT = 30
+
+# ao3
+
+def setup_logger(name, log_file, level=logging.INFO):
+    """To setup as many loggers as you want"""
+
+    handler = logging.FileHandler(log_file)
+
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    logger.addHandler(handler)
+
+    return logger
+
+logger = setup_logger('first_logger', 'urls_saved.log')
+
+duration_logger = setup_logger('second_logger', 'durations.log')
+
 
 def ffn_btn(tag):
 	try:
@@ -131,14 +151,14 @@ def total_pages_imh(tag):
 	try:
 		assert tag.name == "span"
 		
-		logging.debug(f"{tag['class'] = }")
+		logger.debug(f"{tag['class'] = }")
 		assert tag["class"] == ["total_pages"]
 		return True
 	except (AssertionError, KeyError):
 		return False
 
 def get_imh(url):
-	logging.debug(f"Getting next imh style url from {url}")
+	logger.debug(f"Getting next imh style url from {url}")
 	
 	new_url = None
 	
@@ -158,7 +178,7 @@ def get_imh(url):
 	total_page_tag = soup.find(total_pages_imh)
 	pages = int(total_page_tag.text)
 	
-	logging.debug(f"imh total page count is {pages}")
+	logger.debug(f"imh total page count is {pages}")
 	
 	if soup.find_all(make_imh_checker(pages)):
 		return None
@@ -166,8 +186,11 @@ def get_imh(url):
 
 
 def add_link(url):
+	global WAIT
+	global INCREMENT
+	
 	while url:
-		delay = 50
+		delay = 0
 		errors = 0
 		while True:
 			try:
@@ -176,19 +199,35 @@ def add_link(url):
 					user_agent="mr.awesome10000@gmail.com using savepagenow",
 					accept_cache=True
 				)
-				logging.info(f"Saved: {url}")
-				time.sleep(70)
-				delay = 50
+				logger.info(f"Saved: {url}")
+				time.sleep(WAIT)
+				delay = 0
+				
+				'''
+				add_link.count += 1
+				add_link.count %= SAMPLE_SIZE
+				if add_link.count == 0:
+					duration = time.time_ns() - add_link.time
+					duration_logger.info(
+						f"Time for {SAMPLE_SIZE} runs with {WAIT = }"
+						f" and {INCREMENT = } is: {duration // SAMPLE_SIZE} per link"
+					)
+					add_link.time = time.time_ns()
+					
+					WAIT += 10
+				'''
+					
+				
 				break
 			except save.BlockedByRobots as e:
-				logging.critical(f"Error{errors} Skipping blocked by robots: {url}, {e}")
-				delay = 50
-				time.sleep(120)
+				logger.critical(f"Error{errors} Skipping blocked by robots: {url}, {e}")
+				delay = 0
+				time.sleep(WAIT * 2)
 				break
 			except Exception as e:
 				errors += 1
-				logging.error(f"Error{errors}: {url}, {e}")
-				delay += 650
+				logger.error(f"Error{errors}: {url}, {e}")
+				delay += INCREMENT
 				time.sleep(delay)
 
 		if url.startswith("https://www.fanfiction.net/"):
@@ -205,10 +244,11 @@ def add_link(url):
 			url = get_imh(url)
 		else:
 			url = None
-
+#add_link.count = 0
+#add_link.time = time.time_ns()
 
 if __name__ == "__main__":
-	logging.info("Starting")
+	logger.info("Starting")
 	
 	try:
 		for url in sys.argv[1:]:
@@ -220,7 +260,7 @@ if __name__ == "__main__":
 	except:
 		raise
 	finally:
-		logging.info("Stopping")
+		logger.info("Stopping")
 
 
 
