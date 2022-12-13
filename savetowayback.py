@@ -5,7 +5,7 @@
 import sys
 import time
 from functools import reduce
-from operator import or_
+from collections import deque
 import logging
 from urllib.parse import urljoin
 from urllib3.exceptions import ProtocolError
@@ -13,8 +13,8 @@ import bs4
 import requests
 import savepagenow as save
 
-SAMPLE_SIZE = 50
-WAIT = 20
+
+new_urls = "new_urls.txt"
 INCREMENT = 30
 
 # ao3
@@ -30,9 +30,7 @@ def setup_logger(name, log_file, level=logging.INFO):
 
     return logger
 
-logger = setup_logger('first_logger', 'urls_saved.log')
-
-duration_logger = setup_logger('second_logger', 'durations.log')
+logger = setup_logger('first_logger', 'urls_saved4.log')
 
 
 def ffn_btn(tag):
@@ -189,6 +187,8 @@ def get_imh(url):
 
 def add_link(url):
 	last_url = None
+	
+	url = url.strip()
 
 	while url:
 		delay = 0
@@ -205,12 +205,12 @@ def add_link(url):
 				print(f"Saved: {url}")
 				
 				logging.info(f"Saved: {url}")
-				delay = 50
+				delay = 60
 				break
 			except save.BlockedByRobots as e:
 				logging.critical(f"Error{errors} Skipping blocked by robots: {url}, {e}")
 
-				delay = 50
+				delay = 60
 				time.sleep(120)
 
 				break
@@ -220,7 +220,9 @@ def add_link(url):
 				delay += INCREMENT
 				time.sleep(delay)
 
-		last_url = url
+		if is_updatatable(url):
+			last_url = url
+
 		if url.startswith("https://www.fanfiction.net/"):
 			url = get_ffn(url)
 		elif url.startswith("https://forums.spacebattles.com/"):
@@ -238,15 +240,29 @@ def add_link(url):
 
 	return last_url
 
+def save_url_list(urls, lines):
+	url_queue = deque(urls)
+	for url in urls:
+		if is_saved(url):
+			continue
+		last = add_link(url)
+		if last:
+			lines.append(last)
+		url_queue.popleft()
+	
+	return lines, url_queue
+
 
 def read_saved():
-	with open("saved.txt", "r") as save_file:
-		lines = list(save_file.readlines())
-	return lines
+	if not hasattr(read_saved, "lines"):
+		with open("saved.txt", "r") as save_file:
+			lines = list(line.strip() for line in save_file.readlines())
+		read_saved.lines = lines
+	return read_saved.lines
 
-def write_saved(lines, filename="saved.txt"):
+def write_saved(lines, filename):
 	with open(filename, "w") as save_file:
-		save_file.write("\n".join(lines))
+		save_file.write("".join(lines))
 
 
 def accumulator_factory_startswith(url):
@@ -265,6 +281,20 @@ def is_updatatable(url):
 	return not reduce(accumulator_factory_startswith(url), not_updatable)
 
 
+def is_saved(url):
+	lines = read_saved()
+	if url in lines:
+		return True
+	
+	cutoff_page = [line.rsplit("/", 1)[0] for line in lines]
+	if url in cutoff_page:
+		return True
+	if url.rsplit("/", 1)[0] in cutoff_page:
+		return True
+	
+	return False
+	
+
 def update_old(lines):
 	for index, preurl in enumerate(list(lines)):
 		url = preurl.strip()
@@ -274,32 +304,71 @@ def update_old(lines):
 				lines[index] = last
 
 
+help = """Usage: python3 savetowayback.py [-uf] [URLS]...
+	Save webpages to the wayback machine.
+	
+	URLS should be a space separated list of webpages to save to the wayback machine
+
+	Options:
+	  -u        save new content on any old webpages
+	  -f        look in "new_urls.txt" for a list of urls to save
+"""
+
 def main():
 	lines = read_saved()
-	lines = [line.strip() for line in lines]
+	
+	if "--help" in sys.argv:
+		print(help)
+		return
+
 	
 	try:
+		given = sys.argv[1:]
+		todo_file = new_urls
+		save_file = "saved.txt"
+		
+		
 		if "-u" in sys.argv:
 			update_old(lines)
+			given.remove("-u")
 		
 		if "-f" in sys.argv:
-			with open("new_urls.txt", "r") as file:
-				for url in file.readlines():
-					last = add_link(url.strip())
-					if last:
-						lines.append(last)
-		else:
-			for url in sys.argv[1:]:
+			given.remove("-f")
+			with open(new_urls, "r") as file:
+				urls = file.readlines()
+			
+			url_queue = deque(urls)
+			for url in urls:
+				if is_saved(url):
+					continue
 				last = add_link(url)
 				if last:
 					lines.append(last)
+				url_queue.popleft()
+		
+		for url in given:
+			if is_saved(url):
+				continue
+			last = add_link(url)
+			if last:
+				lines.append(last)
 
 		lines = list(set(lines))
-	except:
-		write_saved(lines, filename="save_dump.txt")
-	else:
-		write_saved(lines)
+	except BaseException as e:
+		if isinstance(e, KeyboardInterrupt):
+			log_message = "KeyboardInterrupt"
+		else:
+			todo_file = "urls_unfinished.txt"
+			save_file = "save_dump.txt"
+			log_message = "Uncaught Fatal Exception"
+		
+		logger.critical(log_message)
+		
+		raise
 	finally:
+		write_saved(lines, filename=save_file)
+		write_saved(url_queue, todo_file)
+		
 		logger.info("Stopping")
 
 

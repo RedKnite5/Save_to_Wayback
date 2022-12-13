@@ -1,5 +1,6 @@
 backup_saved.txt
 backup_saved2.txt
-
-urls_saved.log
+*.log
+save_dump.txt
+urls.txt
 
