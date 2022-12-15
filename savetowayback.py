@@ -16,9 +16,16 @@ import savepagenow as save
 
 
 new_urls = "new_urls.txt"
-INCREMENT = 30
+INCREMENT = 60
 
 # ao3
+
+# fix redirects
+# https://imhentai.xxx/view/723747/1/
+# https://imhentai.xxx/view/930947/1/
+
+# https://imhentai.xxx/gallery/764389/
+# https://imhentai.xxx/gallery/905223/
 
 def setup_logger(name, log_file, level=logging.INFO):
     """To setup as many loggers as you want"""
@@ -31,7 +38,9 @@ def setup_logger(name, log_file, level=logging.INFO):
 
     return logger
 
-logger = setup_logger('first_logger', 'urls_saved4.log')
+
+log_file = "urls_saved.log"
+logger = setup_logger("first_logger", log_file)
 
 
 def ffn_btn(tag):
@@ -162,10 +171,10 @@ def get_imh(url):
 	logger.debug(f"Getting next imh style url from {url}")
 	
 	new_url = None
-	
+
 	if not url.endswith("/"):
 		url += "/"
-	
+
 	if "gallery" in url:
 		new_url = url.replace("gallery", "view") + "1/"
 	else:
@@ -177,6 +186,10 @@ def get_imh(url):
 	soup = bs4.BeautifulSoup(page.text, "html.parser")
 	
 	total_page_tag = soup.find(total_pages_imh)
+	if total_page_tag is None:
+		append_update_extras(new_url)
+		logger.error(f"new redirecting url: {new_url}")
+		return None
 	pages = int(total_page_tag.text)
 	
 	logger.debug(f"imh total page count is {pages}")
@@ -263,8 +276,11 @@ def read_saved():
 
 def write_saved(lines, filename):
 	with open(filename, "w") as save_file:
-		save_file.write("".join(lines))
+		save_file.write("\n".join(lines))
 
+def append_update_extras(url):
+	with open("update_extras.txt", "a") as file:
+		file.write(url + "\n")
 
 def accumulator_factory_startswith(url):
 	def accumulator(boolean, start):
@@ -338,7 +354,7 @@ def main():
 			with open(new_urls, "r") as file:
 				urls = file.readlines()
 			
-			url_queue = deque(urls)
+			url_queue = deque(url.strip() for url in urls)
 			for url in urls:
 				if is_saved(url):
 					continue
@@ -367,7 +383,7 @@ def main():
 		
 		raise
 	finally:
-		write_saved(lines, filename=save_file)
+		write_saved(lines, save_file)
 		write_saved(url_queue, todo_file)
 		
 		logger.info("Stopping")
