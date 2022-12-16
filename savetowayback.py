@@ -40,7 +40,7 @@ def setup_logger(name, log_file, level=logging.INFO):
 
 
 log_file = "urls_saved.log"
-logger = setup_logger("first_logger", log_file)
+logger = setup_logger("first_logger", log_file, logging.DEBUG)
 
 
 def ffn_btn(tag):
@@ -199,10 +199,10 @@ def get_imh(url):
 	return new_url
 
 
-def add_link(url):
+def add_link(url_original):
 	last_url = None
 	
-	url = url.strip()
+	url = url_original.strip()
 
 	while url:
 		delay = 0
@@ -236,6 +236,8 @@ def add_link(url):
 
 		if is_updatatable(url):
 			last_url = url
+		else:
+			last_url = url_original.strip()
 
 		if url.startswith("https://www.fanfiction.net/"):
 			url = get_ffn(url)
@@ -361,6 +363,7 @@ def main():
 				last = add_link(url)
 				if last:
 					lines.append(last)
+					logger.debug(f"appending {last} to lines")
 				url_queue.popleft()
 		
 		for url in given:
@@ -369,6 +372,7 @@ def main():
 			last = add_link(url)
 			if last:
 				lines.append(last)
+				logger.debug(f"appending {last} to lines")
 
 		lines = list(set(lines))
 	except BaseException as e:
