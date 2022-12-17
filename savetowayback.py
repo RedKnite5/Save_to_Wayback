@@ -43,6 +43,30 @@ log_file = "urls_saved.log"
 logger = setup_logger("first_logger", log_file, logging.DEBUG)
 
 
+
+def ao3_btn(tag):
+	try:
+		#print(tag.name)
+		#print(tag.text)
+		#print()
+		
+		assert "a" == tag.name
+		assert tag.text == "Next Chapter &#8594;"
+		return True
+	except AssertionError:
+		return False
+	
+
+def get_ao3(url):
+	page = requests.get(url)
+	soup = bs4.BeautifulSoup(page.text, "html.parser")
+	btns = soup.find_all(ao3_btn)
+	
+	if btns:
+		return urljoin("https://archiveofourown.org/", btns[0].attrs["href"])
+	return None
+	
+
 def ffn_btn(tag):
 	try:
 		assert ["btn"] == tag["class"]
@@ -251,6 +275,8 @@ def add_link(url_original):
 			url = get_nh(url)
 		elif url.startswith("https://imhentai.xxx/"):
 			url = get_imh(url)
+		elif url.startswith("https://archiveofourown.org/"):
+			url = get_ao3(url)
 		else:
 			url = None
 
@@ -299,7 +325,6 @@ def is_updatatable(url):
 	
 	return not reduce(accumulator_factory_startswith(url), not_updatable)
 
-
 def is_saved(url):
 	lines = read_saved()
 	if url in lines:
@@ -321,6 +346,20 @@ def update_old(lines):
 			last = add_link(url)
 			if last:
 				lines[index] = last
+
+
+
+def save_url_list(urls, lines, url_queue):
+	url_queue.extend(url.strip() for url in urls)
+	for url in urls:
+		if is_saved(url):
+			continue
+		last = add_link(url)
+		if last:
+			lines.append(last)
+			logger.debug(f"appending {last} to lines")
+		url_queue.popleft()
+
 
 
 help = """Usage: python3 savetowayback.py [-uf] [URLS]...
@@ -351,28 +390,14 @@ def main():
 			update_old(lines)
 			given.remove("-u")
 		
+		url_queue = deque()
 		if "-f" in sys.argv:
 			given.remove("-f")
 			with open(new_urls, "r") as file:
 				urls = file.readlines()
-			
-			url_queue = deque(url.strip() for url in urls)
-			for url in urls:
-				if is_saved(url):
-					continue
-				last = add_link(url)
-				if last:
-					lines.append(last)
-					logger.debug(f"appending {last} to lines")
-				url_queue.popleft()
+			save_url_list(urls, lines, url_queue)
 		
-		for url in given:
-			if is_saved(url):
-				continue
-			last = add_link(url)
-			if last:
-				lines.append(last)
-				logger.debug(f"appending {last} to lines")
+		save_url_list(given, lines, url_queue)
 
 		lines = list(set(lines))
 	except BaseException as e:
