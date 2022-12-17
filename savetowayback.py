@@ -17,6 +17,7 @@ import savepagenow as save
 
 new_urls = "new_urls.txt"
 INCREMENT = 60
+SAVE = False
 
 # ao3
 
@@ -43,15 +44,22 @@ log_file = "urls_saved.log"
 logger = setup_logger("first_logger", log_file, logging.DEBUG)
 
 
+def prep_ao3_url(url):
+	if not url.startswith("https://archiveofourown.org/"):
+		raise ValueError(f"Not AO3 url: {url}")
+
+	if url.endswith("#workskin"):
+		url = url[:-9]
+	if not url.endswith("?view_adult=true"):
+		url = url + "?view_adult=true"
+	
+	return url
+
 
 def ao3_btn(tag):
 	try:
-		#print(tag.name)
-		#print(tag.text)
-		#print()
-		
 		assert "a" == tag.name
-		assert tag.text == "Next Chapter &#8594;"
+		assert tag.text == "Next Chapter →"
 		return True
 	except AssertionError:
 		return False
@@ -63,7 +71,8 @@ def get_ao3(url):
 	btns = soup.find_all(ao3_btn)
 	
 	if btns:
-		return urljoin("https://archiveofourown.org/", btns[0].attrs["href"])
+		next_url = urljoin("https://archiveofourown.org/", btns[0].attrs["href"])
+		return prep_ao3_url(next_url)
 	return None
 	
 
@@ -227,6 +236,8 @@ def add_link(url_original):
 	last_url = None
 	
 	url = url_original.strip()
+	if url.startswith("https://archiveofourown.org/"):
+		url = prep_ao3_url(url)
 
 	while url:
 		delay = 0
@@ -412,8 +423,9 @@ def main():
 		
 		raise
 	finally:
-		write_saved(lines, save_file)
-		write_saved(url_queue, todo_file)
+		if SAVE:
+			write_saved(lines, save_file)
+			write_saved(url_queue, todo_file)
 		
 		logger.info("Stopping")
 
