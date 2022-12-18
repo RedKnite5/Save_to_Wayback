@@ -40,7 +40,7 @@ def setup_logger(name, log_file, level=logging.INFO):
 
 
 log_file = "urls_saved.log"
-logger = setup_logger("first_logger", log_file, logging.DEBUG)
+logger = setup_logger("first_logger", log_file)
 
 
 def ffn_btn(tag):
