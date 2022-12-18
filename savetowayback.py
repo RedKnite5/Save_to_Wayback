@@ -15,7 +15,7 @@ import requests
 import savepagenow as save
 
 
-new_urls = "new_urls.txt"
+NEW_URLS = "new_urls.txt"
 INCREMENT = 60
 SAVE = False
 
@@ -298,18 +298,6 @@ def add_link(url_original):
 
 	return last_url
 
-def save_url_list(urls, lines):
-	url_queue = deque(urls)
-	for url in urls:
-		if is_saved(url):
-			continue
-		last = add_link(url)
-		if last:
-			lines.append(last)
-		url_queue.popleft()
-	
-	return lines, url_queue
-
 
 def read_saved():
 	if not hasattr(read_saved, "lines"):
@@ -375,10 +363,14 @@ def save_url_list(urls, lines, url_queue):
 			lines.append(last)
 			logger.debug(f"appending {last} to lines")
 		url_queue.popleft()
+		if SAVE:
+			write_saved(lines, "saved.txt")
+			write_saved(url_queue, NEW_URLS)
+			logger.info("Saving")
 
 
 
-help = """Usage: python3 savetowayback.py [-uf] [URLS]...
+HELP = """Usage: python3 savetowayback.py [-uf] [URLS]...
 	Save webpages to the wayback machine.
 	
 	URLS should be a space separated list of webpages to save to the wayback machine
@@ -392,13 +384,13 @@ def main():
 	lines = read_saved()
 	
 	if "--help" in sys.argv:
-		print(help)
+		print(HELP)
 		return
 
 	
 	try:
 		given = sys.argv[1:]
-		todo_file = new_urls
+		todo_file = NEW_URLS
 		save_file = "saved.txt"
 		
 		
@@ -409,7 +401,7 @@ def main():
 		url_queue = deque()
 		if "-f" in sys.argv:
 			given.remove("-f")
-			with open(new_urls, "r") as file:
+			with open(NEW_URLS, "r") as file:
 				urls = file.readlines()
 			save_url_list(urls, lines, url_queue)
 		
@@ -428,10 +420,6 @@ def main():
 		
 		raise
 	finally:
-		if SAVE:
-			write_saved(lines, save_file)
-			write_saved(url_queue, todo_file)
-		
 		logger.info("Stopping")
 
 
