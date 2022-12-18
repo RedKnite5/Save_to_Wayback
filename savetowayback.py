@@ -21,6 +21,7 @@ SAVE = False
 
 # ao3
 
+
 # fix redirects
 # https://imhentai.xxx/view/723747/1/
 # https://imhentai.xxx/view/930947/1/
@@ -52,6 +53,10 @@ def prep_ao3_url(url):
 		url = url[:-9]
 	if not url.endswith("?view_adult=true"):
 		url = url + "?view_adult=true"
+	# if view adult is not added then the actual content of the chapter
+	# is not saved. Saving both may be better, but only saving the
+	# adult version seems to work. This is less helpful in non-adult
+	# stories.
 	
 	return url
 
