@@ -17,8 +17,10 @@ import savepagenow as save
 
 new_urls = "new_urls.txt"
 INCREMENT = 60
+SAVE = False
 
 # ao3
+
 
 # fix redirects
 # https://imhentai.xxx/view/723747/1/
@@ -42,6 +44,42 @@ def setup_logger(name, log_file, level=logging.INFO):
 log_file = "urls_saved.log"
 logger = setup_logger("first_logger", log_file)
 
+
+def prep_ao3_url(url):
+	if not url.startswith("https://archiveofourown.org/"):
+		raise ValueError(f"Not AO3 url: {url}")
+
+	if url.endswith("#workskin"):
+		url = url[:-9]
+	if not url.endswith("?view_adult=true"):
+		url = url + "?view_adult=true"
+	# if view adult is not added then the actual content of the chapter
+	# is not saved. Saving both may be better, but only saving the
+	# adult version seems to work. This is less helpful in non-adult
+	# stories.
+	
+	return url
+
+
+def ao3_btn(tag):
+	try:
+		assert "a" == tag.name
+		assert tag.text == "Next Chapter →"
+		return True
+	except AssertionError:
+		return False
+	
+
+def get_ao3(url):
+	page = requests.get(url)
+	soup = bs4.BeautifulSoup(page.text, "html.parser")
+	btns = soup.find_all(ao3_btn)
+	
+	if btns:
+		next_url = urljoin("https://archiveofourown.org/", btns[0].attrs["href"])
+		return prep_ao3_url(next_url)
+	return None
+	
 
 def ffn_btn(tag):
 	try:
@@ -203,6 +241,8 @@ def add_link(url_original):
 	last_url = None
 	
 	url = url_original.strip()
+	if url.startswith("https://archiveofourown.org/"):
+		url = prep_ao3_url(url)
 
 	while url:
 		delay = 0
@@ -251,6 +291,8 @@ def add_link(url_original):
 			url = get_nh(url)
 		elif url.startswith("https://imhentai.xxx/"):
 			url = get_imh(url)
+		elif url.startswith("https://archiveofourown.org/"):
+			url = get_ao3(url)
 		else:
 			url = None
 
@@ -299,7 +341,6 @@ def is_updatatable(url):
 	
 	return not reduce(accumulator_factory_startswith(url), not_updatable)
 
-
 def is_saved(url):
 	lines = read_saved()
 	if url in lines:
@@ -321,6 +362,20 @@ def update_old(lines):
 			last = add_link(url)
 			if last:
 				lines[index] = last
+
+
+
+def save_url_list(urls, lines, url_queue):
+	url_queue.extend(url.strip() for url in urls)
+	for url in urls:
+		if is_saved(url):
+			continue
+		last = add_link(url)
+		if last:
+			lines.append(last)
+			logger.debug(f"appending {last} to lines")
+		url_queue.popleft()
+
 
 
 help = """Usage: python3 savetowayback.py [-uf] [URLS]...
@@ -351,28 +406,14 @@ def main():
 			update_old(lines)
 			given.remove("-u")
 		
+		url_queue = deque()
 		if "-f" in sys.argv:
 			given.remove("-f")
 			with open(new_urls, "r") as file:
 				urls = file.readlines()
-			
-			url_queue = deque(url.strip() for url in urls)
-			for url in urls:
-				if is_saved(url):
-					continue
-				last = add_link(url)
-				if last:
-					lines.append(last)
-					logger.debug(f"appending {last} to lines")
-				url_queue.popleft()
+			save_url_list(urls, lines, url_queue)
 		
-		for url in given:
-			if is_saved(url):
-				continue
-			last = add_link(url)
-			if last:
-				lines.append(last)
-				logger.debug(f"appending {last} to lines")
+		save_url_list(given, lines, url_queue)
 
 		lines = list(set(lines))
 	except BaseException as e:
@@ -387,8 +428,9 @@ def main():
 		
 		raise
 	finally:
-		write_saved(lines, save_file)
-		write_saved(url_queue, todo_file)
+		if SAVE:
+			write_saved(lines, save_file)
+			write_saved(url_queue, todo_file)
 		
 		logger.info("Stopping")
 
