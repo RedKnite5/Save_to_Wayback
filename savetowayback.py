@@ -17,7 +17,7 @@ import savepagenow as save
 
 NEW_URLS = "new_urls.txt"
 INCREMENT = 60
-SAVE = False
+SAVE = True
 
 # ao3
 
@@ -68,7 +68,6 @@ def ao3_btn(tag):
 		return True
 	except AssertionError:
 		return False
-	
 
 def get_ao3(url):
 	page = requests.get(url)
@@ -225,6 +224,8 @@ def get_imh(url):
 	
 	total_page_tag = soup.find(total_pages_imh)
 	if total_page_tag is None:
+		# should not write to saved file in this case
+		# currently does
 		append_update_extras(new_url)
 		logger.error(f"new redirecting url: {new_url}")
 		return None
@@ -263,6 +264,7 @@ def add_link(url_original):
 				break
 			except save.BlockedByRobots as e:
 				logging.critical(f"Error{errors} Skipping blocked by robots: {url}, {e}")
+				# should not save in this case
 
 				delay = 60
 				time.sleep(120)
