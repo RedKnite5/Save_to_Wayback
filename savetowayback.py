@@ -19,8 +19,7 @@ NEW_URLS = "new_urls.txt"
 INCREMENT = 60
 SAVE = True
 
-# ao3
-
+# ffn now has NOARCHIVE and doesnt work
 
 # fix redirects
 # https://imhentai.xxx/view/723747/1/
