@@ -16,7 +16,7 @@ import savepagenow as save
 
 
 NEW_URLS = "new_urls.txt"
-INCREMENT = 60
+INCREMENT = 120
 SAVE = True
 
 # ffn now has NOARCHIVE and doesnt work
