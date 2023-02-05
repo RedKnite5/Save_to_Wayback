@@ -16,7 +16,9 @@ import savepagenow as save
 
 
 NEW_URLS = "new_urls.txt"
-INCREMENT = 120
+default_delay = 30
+toomanyrequests_delay = 60 * 5 + 30
+blocked_by_robots_delay = 120
 SAVE = True
 
 # ffn now has NOARCHIVE and doesnt work
@@ -245,7 +247,7 @@ def add_link(url_original):
 		url = prep_ao3_url(url)
 
 	while url:
-		delay = 0
+		
 		errors = 0
 		while True:
 			try:
@@ -255,25 +257,22 @@ def add_link(url_original):
 					accept_cache=True
 				)
 
-				time.sleep(30)
+				time.sleep(default_delay)
 				print(f"Saved: {url}")
 				
 				logging.info(f"Saved: {url}")
-				delay = 60
 				break
 			except save.BlockedByRobots as e:
 				logging.critical(f"Error{errors} Skipping blocked by robots: {url}, {e}")
 				# should not save in this case
 
-				delay = 60
-				time.sleep(120)
+				time.sleep(blocked_by_robots_delay)
 
 				break
 			except Exception as e:
 				errors += 1
 				logger.error(f"Error{errors}: {url}, {e}")
-				delay += INCREMENT
-				time.sleep(delay)
+				time.sleep(toomanyrequests_delay)
 
 		if is_updatatable(url):
 			last_url = url
