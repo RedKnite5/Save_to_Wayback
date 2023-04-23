@@ -269,8 +269,8 @@ def add_link(url_original):
 					accept_cache=True
 				)
 
-				time.sleep(default_delay)
 				print(f"Saved: {url}")
+				time.sleep(default_delay)
 
 				logging.info(f"Saved: {url}")
 				break
