@@ -10,6 +10,8 @@ from collections import deque
 import logging
 from urllib.parse import urljoin
 from urllib3.exceptions import ProtocolError
+from typing import Callable, Sequence
+
 import bs4
 import requests
 import savepagenow as save
@@ -17,20 +19,20 @@ import savepagenow as save
 
 NEW_URLS = "new_urls.txt"
 SAVED_URLS = "saved.txt"
-default_delay = 30
-toomanyrequests_delay = 60 * 5 + 30
-blocked_by_robots_delay = 120
+DEFAULT_DELAY = 30
+TOOMANYREQUESTS_DELAY = 60 * 5 + 30
+BLOCKED_BY_ROBOTS_DELAY = 120
 SAVE = True
 
 # TODO: Royal Road
 
-ff_url  = "https://www.fanfiction.net/"
-sb_url  = "https://forums.spacebattles.com/"
-sv_url  = "https://forums.sufficientvelocity.com/"
-qq_url  = "https://forum.questionablequesting.com/"
-nh_url  = "https://nhentai.net/g/"
-imh_url = "https://imhentai.xxx/"
-ao3_url = "https://archiveofourown.org/"
+FF_URL  = "https://www.fanfiction.net/"
+SB_URL  = "https://forums.spacebattles.com/"
+SV_URL  = "https://forums.sufficientvelocity.com/"
+QQ_URL  = "https://forum.questionablequesting.com/"
+NH_URL  = "https://nhentai.net/g/"
+IMH_URL = "https://imhentai.xxx/"
+AO3_URL = "https://archiveofourown.org/"
 
 
 # ffn now has NOARCHIVE and doesnt work
@@ -43,23 +45,23 @@ ao3_url = "https://archiveofourown.org/"
 # https://imhentai.xxx/gallery/905223/
 
 def setup_logger(name, log_file, level=logging.INFO):
-    """To setup as many loggers as you want"""
+	"""To setup as many loggers as you want"""
 
-    handler = logging.FileHandler(log_file)
+	handler = logging.FileHandler(log_file)
 
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
-    logger.addHandler(handler)
+	logger = logging.getLogger(name)
+	logger.setLevel(level)
+	logger.addHandler(handler)
 
-    return logger
-
-
-log_file = "urls_saved.log"
-logger = setup_logger("first_logger", log_file)
+	return logger
 
 
-def prep_ao3_url(url):
-	if not url.startswith(ao3_url):
+LOG_FILE = "urls_saved.log"
+logger = setup_logger("first_logger", LOG_FILE)
+
+
+def prep_ao3_url(url: str) -> str:
+	if not url.startswith(AO3_URL):
 		raise ValueError(f"Not AO3 url: {url}")
 
 	if url.endswith("#workskin"):
@@ -74,7 +76,7 @@ def prep_ao3_url(url):
 	return url
 
 
-def ao3_btn(tag):
+def ao3_btn(tag: bs4.element.Tag) -> bool:
 	try:
 		assert "a" == tag.name
 		assert tag.text == "Next Chapter →"
@@ -82,18 +84,18 @@ def ao3_btn(tag):
 	except AssertionError:
 		return False
 
-def get_ao3(url):
-	page = requests.get(url)
+def get_ao3(url: str) -> str | None:
+	page = requests.get(url, timeout=60)
 	soup = bs4.BeautifulSoup(page.text, "html.parser")
 	btns = soup.find_all(ao3_btn)
 
 	if btns:
-		next_url = urljoin(ao3_url, btns[0].attrs["href"])
+		next_url = urljoin(AO3_URL, btns[0].attrs["href"])
 		return prep_ao3_url(next_url)
 	return None
 	
 
-def ffn_btn(tag):
+def ffn_btn(tag: bs4.element.Tag) -> bool:
 	try:
 		assert ["btn"] == tag["class"]
 		assert tag.text == "Next >"
@@ -101,8 +103,8 @@ def ffn_btn(tag):
 	except (KeyError, AssertionError):
 		return False
 
-def get_ffn(url):
-	page = requests.get(url)
+def get_ffn(url: str) -> str | None:
+	page = requests.get(url, timeout=60)
 	soup = bs4.BeautifulSoup(page.text, "html.parser")
 	btns = soup.find_all(ffn_btn)
 	try:
@@ -111,10 +113,10 @@ def get_ffn(url):
 		return None
 	assert btns[0]["onclick"].startswith("self.location='")
 
-	return urljoin(ff_url, btns[0]["onclick"][15:][:-1])
+	return urljoin(FF_URL, btns[0]["onclick"][15:][:-1])
 
 
-def sb_btn(tag):
+def sb_btn(tag: bs4.element.Tag) -> bool:
 	try:
 		assert ["pageNav-jump", "pageNav-jump--next"] == tag["class"]
 		assert tag.text == "Next"
@@ -123,8 +125,8 @@ def sb_btn(tag):
 	except (KeyError, AssertionError):
 		return False
 
-def get_sb(url):
-	page = requests.get(url)
+def get_sb(url: str) -> str | None:
+	page = requests.get(url, timeout=60)
 	soup = bs4.BeautifulSoup(page.text, "html.parser")
 	btns = soup.find_all(sb_btn)
 
@@ -133,10 +135,10 @@ def get_sb(url):
 	except IndexError:
 		return None
 
-	return urljoin(sb_url, btns[0].attrs["href"])
+	return urljoin(SB_URL, btns[0].attrs["href"])
 
-def get_sv(url):
-	page = requests.get(url)
+def get_sv(url: str) -> str | None:
+	page = requests.get(url, timeout=60)
 	soup = bs4.BeautifulSoup(page.text, "html.parser")
 	btns = soup.find_all(sb_btn)
 
@@ -145,10 +147,10 @@ def get_sv(url):
 	except IndexError:
 		return None
 
-	return urljoin(sv_url, btns[0].attrs["href"])
+	return urljoin(SV_URL, btns[0].attrs["href"])
 
 
-def qq_btn(tag):
+def qq_btn(tag: bs4.element.Tag) -> bool:
 	try:
 		assert tag.name == "a"
 		assert ["text"] == tag["class"]
@@ -157,8 +159,8 @@ def qq_btn(tag):
 	except (KeyError, AssertionError):
 		return False
 
-def get_qq(url):
-	page = requests.get(url)
+def get_qq(url: str) -> str | None:
+	page = requests.get(url, timeout=60)
 	soup = bs4.BeautifulSoup(page.text, "html.parser")
 	btns = soup.find_all(qq_btn)
 
@@ -167,17 +169,17 @@ def get_qq(url):
 	except IndexError:
 		return None
 
-	return urljoin(qq_url, btns[0].attrs["href"])
+	return urljoin(QQ_URL, btns[0].attrs["href"])
 
 
-def check_nh(tag):
+def check_nh(tag: bs4.element.Tag) -> bool:
 	try:
 		assert "404 – Not Found" in tag.text
 		return True
 	except AssertionError:
 		return False
 
-def get_nh(url):
+def get_nh(url: str) -> str | None:
 	id_len = len(url[22:].split("/")[0])
 
 	new_url = None
@@ -188,15 +190,15 @@ def get_nh(url):
 	else:
 		new_url = url + "1/"
 
-	page = requests.get(new_url)
+	page = requests.get(new_url, timeout=60)
 	soup = bs4.BeautifulSoup(page.text, "html.parser")
 	if soup.find_all(check_nh):
 		return None
 	return new_url
 
 
-def make_imh_checker(pages):
-	def check_imh(tag):
+def make_imh_checker(pages: int) -> Callable[[bs4.element.Tag], bool]:
+	def check_imh(tag: bs4.element.Tag) -> bool:
 		try:
 			assert tag.name == "span"
 			assert tag["class"] == ["current"]
@@ -207,7 +209,7 @@ def make_imh_checker(pages):
 			return False
 	return check_imh
 
-def total_pages_imh(tag):
+def total_pages_imh(tag: bs4.element.Tag) -> bool:
 	try:
 		assert tag.name == "span"
 
@@ -217,7 +219,7 @@ def total_pages_imh(tag):
 	except (AssertionError, KeyError):
 		return False
 
-def get_imh(url):
+def get_imh(url: str) -> str | None:
 	logger.debug(f"Getting next imh style url from {url}")
 
 	new_url = None
@@ -232,7 +234,7 @@ def get_imh(url):
 		parts[-2] = str(int(parts[-2]) + 1)
 		new_url = "/".join(parts)
 
-	page = requests.get(new_url)
+	page = requests.get(new_url, timeout=60)
 	soup = bs4.BeautifulSoup(page.text, "html.parser")
 
 	total_page_tag = soup.find(total_pages_imh)
@@ -251,11 +253,11 @@ def get_imh(url):
 	return new_url
 
 
-def add_link(url_original):
+def add_link(url_original: str) -> str | None:
 	last_url = None
 
 	url = url_original.strip()
-	if url.startswith(ao3_url):
+	if url.startswith(AO3_URL):
 		url = prep_ao3_url(url)
 
 	while url:
@@ -270,40 +272,40 @@ def add_link(url_original):
 				)
 
 				print(f"Saved: {url}")
-				time.sleep(default_delay)
+				time.sleep(DEFAULT_DELAY)
 
 				logging.info(f"Saved: {url}")
 				break
-			except save.BlockedByRobots as e:
-				logging.critical(f"Error{errors} Skipping blocked by robots: {url}, {e}")
+			except save.BlockedByRobots as exc:
+				logging.critical(f"Error{errors} Skipping blocked by robots: {url}, {exc}")
 				# should not save in this case
 
-				time.sleep(blocked_by_robots_delay)
+				time.sleep(BLOCKED_BY_ROBOTS_DELAY)
 
 				break
-			except Exception as e:
+			except Exception as exc:
 				errors += 1
-				logger.error(f"Error{errors}: {url}, {e}")
-				time.sleep(toomanyrequests_delay)
+				logger.error(f"Error{errors}: {url}, {exc}")
+				time.sleep(TOOMANYREQUESTS_DELAY)
 
 		if is_updatatable(url):
 			last_url = url
 		else:
 			last_url = url_original.strip()
 
-		if url.startswith(ff_url):
+		if url.startswith(FF_URL):
 			url = get_ffn(url)
-		elif url.startswith(sb_url):
+		elif url.startswith(SB_URL):
 			url = get_sb(url)
-		elif url.startswith(sv_url):
+		elif url.startswith(SV_URL):
 			url = get_sv(url)
-		elif url.startswith(qq_url):
+		elif url.startswith(QQ_URL):
 			url = get_qq(url)
-		elif url.startswith(nh_url):
+		elif url.startswith(NH_URL):
 			url = get_nh(url)
-		elif url.startswith(imh_url):
+		elif url.startswith(IMH_URL):
 			url = get_imh(url)
-		elif url.startswith(ao3_url):
+		elif url.startswith(AO3_URL):
 			url = get_ao3(url)
 		else:
 			url = None
@@ -318,30 +320,30 @@ def read_saved() -> list[str]:
 		read_saved.lines = lines
 	return read_saved.lines
 
-def write_saved(lines, filename):
+def write_saved(lines: Sequence[str], filename: str) -> None:
 	with open(filename, "w") as save_file:
 		save_file.write("\n".join(lines))
 
-def append_update_extras(url):
+def append_update_extras(url: str) -> None:
 	with open("update_extras.txt", "a") as file:
 		file.write(url + "\n")
 
-def accumulator_factory_startswith(url):
-	def accumulator(boolean, start):
+def accumulator_factory_startswith(url: str) -> Callable[[bool, str], bool]:
+	def accumulator(boolean: bool, start: str) -> bool:
 		return boolean or url.startswith(start)
 	return accumulator
 
-def is_updatatable(url):
+def is_updatatable(url: str) -> bool:
 	"Or all possible failure conditions then invert the result"
 
 	not_updatable = [
-		nh_url,
-		imh_url
+		NH_URL,
+		IMH_URL
 	]
 
 	return not reduce(accumulator_factory_startswith(url), not_updatable)
 
-def is_saved(url):
+def is_saved(url: str) -> bool:
 	lines = read_saved()
 	formatted = save_format(url)
 	if url in lines or formatted in lines:
@@ -350,11 +352,11 @@ def is_saved(url):
 	# TODO: caching
 	cutoff_page = []
 	for line in lines:
-		if line.startswith(sb_url) or line.startswith(sv_url) or line.startswith(qq_url):
+		if line.startswith(SB_URL) or line.startswith(SV_URL) or line.startswith(QQ_URL):
 			cutoff_page.append(line.split("/page-")[0])
-		elif line.startswith(nh_url):
-			cutoff_page.append(nh_url + "g/" + line[len(nh_url + "g/"):].split("/")[0])
-		elif line.startswith(imh_url):
+		elif line.startswith(NH_URL):
+			cutoff_page.append(NH_URL + "g/" + line[len(NH_URL + "g/"):].split("/")[0])
+		elif line.startswith(IMH_URL):
 			new_line = line.strip("/")
 			if "view" in url:
 				new_line = new_line.replace("view", "gallery")
@@ -375,7 +377,7 @@ def is_saved(url):
 	return False
 
 
-def update_old(lines):
+def update_old(lines: list[str]) -> None:
 	for index, preurl in enumerate(list(lines)):
 		url = preurl.strip()
 		if is_updatatable(url):
@@ -384,7 +386,7 @@ def update_old(lines):
 				lines[index] = last
 
 
-def save_url_list(urls, lines, url_queue):
+def save_url_list(urls: list[str], lines: list[str], url_queue: deque) -> None:
 	url_queue.extend(url.strip() for url in urls)
 	for url in urls:
 		if is_saved(url):
@@ -400,18 +402,19 @@ def save_url_list(urls, lines, url_queue):
 			logger.info("Saving")
 
 
-def save_format(url):
+def save_format(url: str | None) -> str | None:
 	"""Format the url to be saved in the save file"""
+	if not url:
+		return url
+
 	url = url.strip("/")
-	if url.startswith(imh_url):
+	if url.startswith(IMH_URL):
 		if "view" in url:
 			url = url.replace("view", "gallery")
 			url = url.rsplit("/")[0]
 		return url
 	return url
 	
-
-
 
 HELP = """Usage: python3 savetowayback.py [-uf] [URLS]...
 	Save webpages to the wayback machine.
@@ -423,7 +426,7 @@ HELP = """Usage: python3 savetowayback.py [-uf] [URLS]...
 	  -f        look in "new_urls.txt" for a list of urls to save
 """
 
-def main():
+def main() -> None:
 	lines = read_saved()
 
 	if "--help" in sys.argv:
@@ -449,8 +452,8 @@ def main():
 		save_url_list(given, lines, url_queue)
 
 		lines = list(set(lines))
-	except BaseException as e:
-		if isinstance(e, KeyboardInterrupt):
+	except BaseException as exc:
+		if isinstance(exc, KeyboardInterrupt):
 			log_message = "KeyboardInterrupt"
 		else:
 			todo_file = "urls_unfinished.txt"
