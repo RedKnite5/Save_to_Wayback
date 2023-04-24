@@ -38,5 +38,25 @@ class SaveFormat(unittest.TestCase):
 		url_formatted = "https://forums.sufficientvelocity.com/threads/administrative-mishap-supergirl-worm.70756/page-40"
 		self.assertEqual(url_formatted, save.save_format(url))
 
+	def test_imh_gallery_no_slash(self):
+		url = "https://imhentai.xxx/gallery/773818"
+		self.assertEqual(url, save.save_format(url))
+
+	def test_imh_gallery_slash(self):
+		url = "https://imhentai.xxx/gallery/773818/"
+		url_formatted = "https://imhentai.xxx/gallery/773818"
+		self.assertEqual(url_formatted, save.save_format(url))
+
+	def test_imh_view_no_slash(self):
+		url = "https://imhentai.xxx/view/523105/45"
+		url_formatted = "https://imhentai.xxx/gallery/523105"
+		self.assertEqual(url_formatted, save.save_format(url))
+
+	def test_imh_view_slash(self):
+		url = "https://imhentai.xxx/view/523105/45/"
+		url_formatted = "https://imhentai.xxx/gallery/523105"
+		self.assertEqual(url_formatted, save.save_format(url))
+
+
 if __name__ == "__main__":
 	unittest.main()

@@ -72,7 +72,7 @@ def prep_ao3_url(url: str) -> str:
 	# is not saved. Saving both may be better, but only saving the
 	# adult version seems to work. This is less helpful in non-adult
 	# stories.
-	
+
 	return url
 
 
@@ -93,7 +93,7 @@ def get_ao3(url: str) -> str | None:
 		next_url = urljoin(AO3_URL, btns[0].attrs["href"])
 		return prep_ao3_url(next_url)
 	return None
-	
+
 
 def ffn_btn(tag: bs4.element.Tag) -> bool:
 	try:
@@ -348,7 +348,7 @@ def is_saved(url: str) -> bool:
 	formatted = save_format(url)
 	if url in lines or formatted in lines:
 		return True
-	
+
 	# TODO: caching
 	cutoff_page = []
 	for line in lines:
@@ -362,9 +362,9 @@ def is_saved(url: str) -> bool:
 				new_line = new_line.replace("view", "gallery")
 				new_line = new_line.rsplit("/")[0]
 			cutoff_page.append(new_line)
-		else:  # TODO: ao3  
+		else:  # TODO: ao3
 			cutoff_page.append(line.strip("/"))
-	
+
 	if formatted in cutoff_page:
 		return True
 
@@ -411,14 +411,14 @@ def save_format(url: str | None) -> str | None:
 	if url.startswith(IMH_URL):
 		if "view" in url:
 			url = url.replace("view", "gallery")
-			url = url.rsplit("/")[0]
+			url = url.rsplit("/", 1)[0]
 		return url
 	return url
-	
+
 
 HELP = """Usage: python3 savetowayback.py [-uf] [URLS]...
 	Save webpages to the wayback machine.
-	
+
 	URLS should be a space separated list of webpages to save to the wayback machine
 
 	Options:
@@ -470,7 +470,7 @@ def main() -> None:
 
 if __name__ == "__main__":
 	#time.sleep(1)
-	
+
 	logging.info("Starting")
 
 	main()
