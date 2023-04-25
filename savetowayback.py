@@ -324,14 +324,10 @@ def write_saved(lines: Sequence[str], filename: str) -> None:
 	with open(filename, "w") as save_file:
 		save_file.write("\n".join(lines))
 
-def append_update_extras(url: str) -> None:
-	with open("update_extras.txt", "a") as file:
+def append_update_extras(url: str, filename: str="update_extras.txt") -> None:
+	with open(filename, "a") as file:
 		file.write(url + "\n")
 
-def accumulator_factory_startswith(url: str) -> Callable[[bool, str], bool]:
-	def accumulator(boolean: bool, start: str) -> bool:
-		return boolean or url.startswith(start)
-	return accumulator
 
 def is_updatatable(url: str) -> bool:
 	"Or all possible failure conditions then invert the result"
@@ -341,39 +337,23 @@ def is_updatatable(url: str) -> bool:
 		IMH_URL
 	]
 
-	return not reduce(accumulator_factory_startswith(url), not_updatable)
+	for start in not_updatable:
+		if url.startswith(start):
+			return False
+	return True
 
-def is_saved(url: str) -> bool:
-	lines = read_saved()
-	formatted = save_format(url)
+def is_saved(url: str, lines: Sequence[str] | None = None) -> bool:
+	if lines is None:
+		lines = read_saved()
+	formatted = comp_format(url)
 	if url in lines or formatted in lines:
 		return True
 
 	# TODO: caching
-	cutoff_page = []
-	for line in lines:
-		if line.startswith(SB_URL) or line.startswith(SV_URL) or line.startswith(QQ_URL):
-			cutoff_page.append(line.split("/page-")[0])
-		elif line.startswith(NH_URL):
-			cutoff_page.append(NH_URL + "g/" + line[len(NH_URL + "g/"):].split("/")[0])
-		elif line.startswith(IMH_URL):
-			new_line = line.strip("/")
-			if "view" in url:
-				new_line = new_line.replace("view", "gallery")
-				new_line = new_line.rsplit("/")[0]
-			cutoff_page.append(new_line)
-		else:  # TODO: ao3
-			cutoff_page.append(line.strip("/"))
+	cutoff_page = [comp_format(line) for line in lines]
 
 	if formatted in cutoff_page:
 		return True
-
-	#cutoff_page = [line.rsplit("/", 1)[0] for line in lines]
-	#if url in cutoff_page:
-	#	return True
-	#if url.rsplit("/", 1)[0] in cutoff_page:
-	#	return True
-
 	return False
 
 
@@ -400,6 +380,20 @@ def save_url_list(urls: list[str], lines: list[str], url_queue: deque) -> None:
 			write_saved(lines, SAVED_URLS)
 			write_saved(url_queue, NEW_URLS)
 			logger.info("Saving")
+
+def comp_format(url: str) -> str:
+	if url.startswith(SB_URL) or url.startswith(SV_URL) or url.startswith(QQ_URL):
+		return url.split("/page-")[0].strip("/")
+	elif url.startswith(NH_URL):
+		return NH_URL + url[len(NH_URL):].split("/")[0]
+	elif url.startswith(IMH_URL):
+		url = url.strip("/")
+		if "view" in url:
+			url = url.replace("view", "gallery")
+			url = url.rsplit("/", 1)[0]
+		return url
+	else:  # TODO: ao3
+		return url.strip("/")
 
 
 def save_format(url: str | None) -> str | None:
