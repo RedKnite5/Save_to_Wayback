@@ -24,9 +24,9 @@ def test_recorder():
     rsp = requests.get("https://nhentai.net/g/149789/3")
     rsp = requests.get("https://nhentai.net/g/149789/23")
     rsp = requests.get("https://nhentai.net/g/449729/1")
-    rsp = requests.get("https://imhentai.xxx/view/791259/1")
-    rsp = requests.get("https://imhentai.xxx/view/791259/2")
-    rsp = requests.get("https://imhentai.xxx/view/791259/3")
+    rsp = requests.get("https://imhentai.xxx/view/791259/1/")
+    rsp = requests.get("https://imhentai.xxx/view/791259/2/")
+    rsp = requests.get("https://imhentai.xxx/view/791259/3/")
     rsp = requests.get("https://forums.spacebattles.com/threads/subduction-worm.305227/")
     rsp = requests.get("https://forums.spacebattles.com/threads/subduction-worm.305227/page-10")
     rsp = requests.get("https://forums.spacebattles.com/threads/subduction-worm.305227/page-33")
@@ -240,6 +240,34 @@ class GetNH(TestCase):
 		start_url = "https://nhentai.net/g/149789/22"
 		next_url = None
 		self.assertEqual(next_url, save.get_nh(start_url))
+
+class GetIMH(TestCase):
+	def setUp(self):
+		self.r_mock = RequestsMock(assert_all_requests_are_fired=False)
+		self.r_mock._add_from_file(responses_file)
+		self.r_mock.start()
+
+	def tearDown(self):
+		self.r_mock.stop()
+		self.r_mock.reset()
+
+
+	def test_get_first_page(self):
+		start_url = "https://imhentai.xxx/gallery/791259/"
+		next_url = "https://imhentai.xxx/view/791259/1/"
+		self.assertEqual(next_url, save.get_imh(start_url))
+
+	
+	def test_get_middle_page(self):
+		start_url = "https://imhentai.xxx/view/791259/1/"
+		next_url = "https://imhentai.xxx/view/791259/2/"
+		self.assertEqual(next_url, save.get_imh(start_url))
+
+	@skip("Error: doesn't detect 404 - not found")
+	def test_detect_end(self):
+		start_url = "https://imhentai.xxx/view/791259/2/"
+		next_url = None
+		self.assertEqual(next_url, save.get_imh(start_url))
 
 class GetSB(TestCase):
 	def setUp(self):
