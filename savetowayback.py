@@ -2,15 +2,15 @@
 # used 1/9/21
 # used 12/20/21
 # used DEC/13/22
+# used APR/26/23
 
+import logging
 import sys
 import time
-from functools import reduce
 from collections import deque
-import logging
+from typing import Callable, Sequence
 from urllib.parse import urljoin
 from urllib3.exceptions import ProtocolError
-from typing import Callable, Sequence
 
 import bs4
 import requests
@@ -36,6 +36,7 @@ AO3_URL = "https://archiveofourown.org/"
 
 
 # ffn now has NOARCHIVE and doesnt work
+# nhentai has robots.txt tell wayback to not save
 
 # fix redirects
 # https://imhentai.xxx/view/723747/1/
@@ -129,7 +130,6 @@ def get_sb(url: str) -> str | None:
 	page = requests.get(url, timeout=60)
 	soup = bs4.BeautifulSoup(page.text, "html.parser")
 	btns = soup.find_all(sb_btn)
-
 	try:
 		assert btns[0].attrs["href"] == btns[1].attrs["href"]
 	except IndexError:
@@ -180,6 +180,7 @@ def check_nh(tag: bs4.element.Tag) -> bool:
 		return False
 
 def get_nh(url: str) -> str | None:
+	url = url.strip("/") + "/"
 	id_len = len(url[22:].split("/")[0])
 
 	new_url = None
@@ -188,7 +189,9 @@ def get_nh(url: str) -> str | None:
 		parts[-2] = str(int(parts[-2]) + 1)
 		new_url = "/".join(parts)
 	else:
-		new_url = url + "1/"
+		new_url = url + "1"
+	
+	new_url = new_url.strip("/")
 
 	page = requests.get(new_url, timeout=60)
 	soup = bs4.BeautifulSoup(page.text, "html.parser")
@@ -392,7 +395,7 @@ def comp_format(url: str) -> str:
 			url = url.replace("view", "gallery")
 			url = url.rsplit("/", 1)[0]
 		return url
-	else:  # TODO: ao3
+	else:  # TODO: ao3, ff
 		return url.strip("/")
 
 

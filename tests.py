@@ -1,16 +1,47 @@
 #!/usr/bin/env python
 
 
-import unittest
 import logging
+import unittest
+from unittest import skip, TestCase
+import pathlib
+
+import requests
+from responses import _recorder, RequestsMock
 
 import savetowayback as save
 
 logging.disable(logging.CRITICAL)
 
+path = pathlib.Path(__file__).parent.resolve()
+responses_file = path / "test_files/responses.yaml"
 
 
-class SaveFormat(unittest.TestCase):
+@_recorder.record(file_path=responses_file)
+def test_recorder():
+    # TODO: AO3
+    rsp = requests.get("https://nhentai.net/g/149789/1")
+    rsp = requests.get("https://nhentai.net/g/149789/3")
+    rsp = requests.get("https://nhentai.net/g/149789/23")
+    rsp = requests.get("https://nhentai.net/g/449729/1")
+    rsp = requests.get("https://imhentai.xxx/view/791259/1")
+    rsp = requests.get("https://imhentai.xxx/view/791259/2")
+    rsp = requests.get("https://imhentai.xxx/view/791259/3")
+    rsp = requests.get("https://forums.spacebattles.com/threads/subduction-worm.305227/")
+    rsp = requests.get("https://forums.spacebattles.com/threads/subduction-worm.305227/page-10")
+    rsp = requests.get("https://forums.spacebattles.com/threads/subduction-worm.305227/page-33")
+    rsp = requests.get("https://forums.sufficientvelocity.com/threads/fleisch-und-stein-worm-si-after-a-fashion.55253/")
+    rsp = requests.get("https://forums.sufficientvelocity.com/threads/fleisch-und-stein-worm-si-after-a-fashion.55253/page-2")
+    rsp = requests.get("https://forums.sufficientvelocity.com/threads/fleisch-und-stein-worm-si-after-a-fashion.55253/page-5")
+    rsp = requests.get("https://forum.questionablequesting.com/threads/the-skittering-chaos-worm-hazbin-hotel.12674/")
+    rsp = requests.get("https://forum.questionablequesting.com/threads/the-skittering-chaos-worm-hazbin-hotel.12674/page-2")
+    rsp = requests.get("https://forum.questionablequesting.com/threads/the-skittering-chaos-worm-hazbin-hotel.12674/page-41")
+    rsp = requests.get("https://www.fanfiction.net/s/13905005/1/Two-Minutes-Silence")
+    rsp = requests.get("https://www.fanfiction.net/s/13905005/22/Two-Minutes-Silence")
+
+
+
+class SaveFormat(TestCase):
 	def test_sb_no_page_no_slash(self):
 		url = "https://forums.spacebattles.com/threads/medical-cut-twice-worm-au.309599"
 		self.assertEqual(url, save.save_format(url))
@@ -69,8 +100,7 @@ class SaveFormat(unittest.TestCase):
 	def test_ao3(self):
 		pass
 
-
-class IsUpdatable(unittest.TestCase):
+class IsUpdatable(TestCase):
 	def test_is_updatable_sb(self):
 		url = "https://forums.spacebattles.com/threads/tombstones-worm.293073/page-14"
 		self.assertTrue(save.is_updatatable(url))
@@ -87,8 +117,7 @@ class IsUpdatable(unittest.TestCase):
 		url = "https://nhentai.net/g/267342/"
 		self.assertFalse(save.is_updatatable(url))
 
-
-class IsSaved(unittest.TestCase):
+class IsSaved(TestCase):
 	def setUp(self) -> None:
 		self.lines = [
 			"https://nhentai.net/g/378138/",
@@ -152,20 +181,164 @@ class IsSaved(unittest.TestCase):
 	def test_doesnt_find_missing_imh_gal(self):
 		self.assertFalse(save.is_saved("https://imhentai.xxx/gallery/497/", self.lines))
 
-class CompFormat(unittest.TestCase):
+class CompFormat(TestCase):
 	def test_sb_no_page(self):
 		url = "https://forums.spacebattles.com/threads/madokami-quest.252226/page-13"
 		url_formatted = "https://forums.spacebattles.com/threads/madokami-quest.252226"
 		self.assertEqual(url_formatted, save.comp_format(url))
 
+	def test_sb_page(self):
+		url = "https://forums.spacebattles.com/threads/madokami-quest.252226/"
+		url_formatted = "https://forums.spacebattles.com/threads/madokami-quest.252226"
+		self.assertEqual(url_formatted, save.comp_format(url))
+
+	def test_sv_no_page(self):
+		url = "https://forums.sufficientvelocity.com/threads/splintered-worm-qa-quest.24509/"
+		url_formatted = "https://forums.sufficientvelocity.com/threads/splintered-worm-qa-quest.24509"
+		self.assertEqual(url_formatted, save.comp_format(url))
+
+	def test_sv_page(self):
+		url = "https://forums.sufficientvelocity.com/threads/splintered-worm-qa-quest.24509/page-4/"
+		url_formatted = "https://forums.sufficientvelocity.com/threads/splintered-worm-qa-quest.24509"
+		self.assertEqual(url_formatted, save.comp_format(url))
+
+	def test_nh_no_page(self):
+		url = "https://nhentai.net/g/362088"
+		url_formatted = "https://nhentai.net/g/362088"
+		self.assertEqual(url_formatted, save.comp_format(url))
+
+	def test_nh_page(self):
+		url = "https://nhentai.net/g/362088/3/"
+		url_formatted = "https://nhentai.net/g/362088"
+		self.assertEqual(url_formatted, save.comp_format(url))
 
 
+class GetNH(TestCase):
+	def setUp(self):
+		self.r_mock = RequestsMock(assert_all_requests_are_fired=False)
+		self.r_mock._add_from_file(responses_file)
+		self.r_mock.start()
+
+	def tearDown(self):
+		self.r_mock.stop()
+		self.r_mock.reset()
 
 
+	def test_get_first_page(self):
+		start_url = "https://nhentai.net/g/149789"
+		next_url = "https://nhentai.net/g/149789/1"
+		self.assertEqual(next_url, save.get_nh(start_url))
 
+	
+	def test_get_middle_page(self):
+		start_url = "https://nhentai.net/g/149789/2"
+		next_url = "https://nhentai.net/g/149789/3"
+		self.assertEqual(next_url, save.get_nh(start_url))
 
+	@skip("Error: doesn't detect 404 - not found")
+	def test_detect_end(self):
+		start_url = "https://nhentai.net/g/149789/22"
+		next_url = None
+		self.assertEqual(next_url, save.get_nh(start_url))
 
+class GetSB(TestCase):
+	def setUp(self):
+		self.r_mock = RequestsMock(assert_all_requests_are_fired=False)
+		self.r_mock._add_from_file(responses_file)
+		self.r_mock.start()
+
+	def tearDown(self):
+		self.r_mock.stop()
+		self.r_mock.reset()
+
+	def test_get_first_page(self):
+		start_url = "https://forums.spacebattles.com/threads/subduction-worm.305227/"
+		next_url = "https://forums.spacebattles.com/threads/subduction-worm.305227/page-2"
+		self.assertEqual(next_url, save.get_sb(start_url))
+
+	def test_get_middle_page(self):
+		start_url = "https://forums.spacebattles.com/threads/subduction-worm.305227/page-10"
+		next_url = "https://forums.spacebattles.com/threads/subduction-worm.305227/page-11"
+		self.assertEqual(next_url, save.get_sb(start_url))
+
+	def test_get_detect_last_page(self):
+		start_url = "https://forums.spacebattles.com/threads/subduction-worm.305227/page-33"
+		next_url = None
+		self.assertEqual(next_url, save.get_sb(start_url))
+
+class GetSV(TestCase):
+	def setUp(self):
+		self.r_mock = RequestsMock(assert_all_requests_are_fired=False)
+		self.r_mock._add_from_file(responses_file)
+		self.r_mock.start()
+
+	def tearDown(self):
+		self.r_mock.stop()
+		self.r_mock.reset()
+
+	def test_get_first_page(self):
+		start_url = "https://forums.sufficientvelocity.com/threads/fleisch-und-stein-worm-si-after-a-fashion.55253/"
+		next_url = "https://forums.sufficientvelocity.com/threads/fleisch-und-stein-worm-si-after-a-fashion.55253/page-2"
+		self.assertEqual(next_url, save.get_sv(start_url))
+
+	def test_get_middle_page(self):
+		start_url = "https://forums.sufficientvelocity.com/threads/fleisch-und-stein-worm-si-after-a-fashion.55253/page-2"
+		next_url = "https://forums.sufficientvelocity.com/threads/fleisch-und-stein-worm-si-after-a-fashion.55253/page-3"
+		self.assertEqual(next_url, save.get_sv(start_url))
+
+	def test_get_detect_last_page(self):
+		start_url = "https://forums.sufficientvelocity.com/threads/fleisch-und-stein-worm-si-after-a-fashion.55253/page-5"
+		next_url = None
+		self.assertEqual(next_url, save.get_sv(start_url))
+
+class GetQQ(TestCase):
+	def setUp(self):
+		self.r_mock = RequestsMock(assert_all_requests_are_fired=False)
+		self.r_mock._add_from_file(responses_file)
+		self.r_mock.start()
+
+	def tearDown(self):
+		self.r_mock.stop()
+		self.r_mock.reset()
+
+	def test_get_first_page(self):
+		start_url = "https://forum.questionablequesting.com/threads/the-skittering-chaos-worm-hazbin-hotel.12674/"
+		next_url = "https://forum.questionablequesting.com/threads/the-skittering-chaos-worm-hazbin-hotel.12674/page-2"
+		self.assertEqual(next_url, save.get_qq(start_url))
+
+	def test_get_middle_page(self):
+		start_url = "https://forum.questionablequesting.com/threads/the-skittering-chaos-worm-hazbin-hotel.12674/page-2"
+		next_url = "https://forum.questionablequesting.com/threads/the-skittering-chaos-worm-hazbin-hotel.12674/page-3"
+		self.assertEqual(next_url, save.get_qq(start_url))
+
+	def test_get_detect_last_page(self):
+		start_url = "https://forum.questionablequesting.com/threads/the-skittering-chaos-worm-hazbin-hotel.12674/page-41"
+		next_url = None
+		self.assertEqual(next_url, save.get_qq(start_url))
+
+class GetFF(TestCase):
+	def setUp(self):
+		self.r_mock = RequestsMock(assert_all_requests_are_fired=False)
+		self.r_mock._add_from_file(responses_file)
+		self.r_mock.start()
+
+	def tearDown(self):
+		self.r_mock.stop()
+		self.r_mock.reset()
+
+	@skip("ff broken")
+	def test_get_first_page(self):
+		start_url = "https://www.fanfiction.net/s/13905005/1/Two-Minutes-Silence"
+		next_url = "https://www.fanfiction.net/s/13905005/2/Two-Minutes-Silence"
+		self.assertEqual(next_url, save.get_ffn(start_url))
+
+	@skip("ff broken")
+	def test_get_detect_last_page(self):
+		start_url = "https://www.fanfiction.net/s/13905005/22/Two-Minutes-Silence"
+		next_url = None
+		self.assertEqual(next_url, save.get_ffn(start_url))
 
 
 if __name__ == "__main__":
 	unittest.main()
+	#test_recorder()
