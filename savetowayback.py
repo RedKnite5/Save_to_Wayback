@@ -316,7 +316,7 @@ def add_link(url_original: str) -> str | None:
 	return last_url
 
 
-def read_saved() -> list[str]:
+def read_saved(file: str = None) -> list[str]:
 	if not hasattr(read_saved, "lines"):
 		with open(SAVED_URLS, "r") as save_file:
 			lines = list(line.strip() for line in save_file.readlines())

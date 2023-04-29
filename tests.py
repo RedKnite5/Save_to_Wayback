@@ -367,6 +367,10 @@ class GetFF(TestCase):
 		self.assertEqual(next_url, save.get_ffn(start_url))
 
 
+class ReadSaved(TestCase):
+	
+
+
 if __name__ == "__main__":
 	unittest.main()
 	#test_recorder()
