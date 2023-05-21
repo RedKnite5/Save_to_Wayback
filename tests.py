@@ -5,6 +5,7 @@ import logging
 import unittest
 from unittest import skip, TestCase
 import pathlib
+from io import StringIO
 
 import requests
 from responses import _recorder, RequestsMock
@@ -38,6 +39,9 @@ def test_recorder():
     rsp = requests.get("https://forum.questionablequesting.com/threads/the-skittering-chaos-worm-hazbin-hotel.12674/page-41")
     rsp = requests.get("https://www.fanfiction.net/s/13905005/1/Two-Minutes-Silence")
     rsp = requests.get("https://www.fanfiction.net/s/13905005/22/Two-Minutes-Silence")
+    rsp = requests.get("https://archiveofourown.org/works/30308658/chapters/74705736")
+    rsp = requests.get("https://archiveofourown.org/works/30308658/chapters/75128508?view_adult=true")
+    rsp = requests.get("https://archiveofourown.org/works/30308658/chapters/81088840?view_adult=true")
 
 
 
@@ -241,6 +245,7 @@ class GetNH(TestCase):
 		next_url = None
 		self.assertEqual(next_url, save.get_nh(start_url))
 
+# TODO: add tests for around page 10-11, there appears to be something wrong around there
 class GetIMH(TestCase):
 	def setUp(self):
 		self.r_mock = RequestsMock(assert_all_requests_are_fired=False)
@@ -366,11 +371,57 @@ class GetFF(TestCase):
 		next_url = None
 		self.assertEqual(next_url, save.get_ffn(start_url))
 
+class GetAO3(TestCase):
+	def setUp(self):
+		self.r_mock = RequestsMock(assert_all_requests_are_fired=False)
+		self.r_mock._add_from_file(responses_file)
+		self.r_mock.start()
+
+	def tearDown(self):
+		self.r_mock.stop()
+		self.r_mock.reset()
+
+	def test_get_first_page(self):
+		start_url = "https://archiveofourown.org/works/30308658/chapters/74705736"
+		next_url = "https://archiveofourown.org/works/30308658/chapters/74705736?view_adult=true"
+		self.assertEqual(next_url, save.get_ao3(start_url))
+
+	def test_get_middle_page(self):
+		start_url = "https://archiveofourown.org/works/30308658/chapters/75128508?view_adult=true"
+		next_url = "https://archiveofourown.org/works/30308658/chapters/77777837"
+		self.assertEqual(next_url, save.get_ao3(start_url))
+
+	def test_get_detect_last_page(self):
+		start_url = "https://archiveofourown.org/works/30308658/chapters/81088840?view_adult=true"
+		next_url = None
+		self.assertEqual(next_url, save.get_ao3(start_url))
+
 
 class ReadSaved(TestCase):
-	
+	def test_read(self):
+		file = StringIO(
+			"https://nhentai.net/g/376173/\n"
+			"https://imhentai.xxx/gallery/774551/\n"
+			"https://forums.spacebattles.com/threads/walkabouts-worm-au.278895/page-44\n"
+		)
+		lines_ref = list(line.strip() for line in file.readlines())
+		file.seek(0)
+
+		lines = save.read_saved(file)
+
+		self.assertEqual(lines, lines_ref)
+		
+		file.write("https://forums.spacebattles.com/threads/vicarious-worm-au.317269/page-3")
+		self.assertEqual(lines, lines_ref)
+
+		file.seek(0)
+		lines_ref2 = list(line.strip() for line in file.readlines())
+		self.assertNotEqual(lines, lines_ref2)
+
+
 
 
 if __name__ == "__main__":
-	unittest.main()
 	#test_recorder()
+	unittest.main()
+	

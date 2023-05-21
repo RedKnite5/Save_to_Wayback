@@ -8,9 +8,10 @@ import logging
 import sys
 import time
 from collections import deque
-from typing import Callable, Sequence
+from typing import Callable, Sequence, Protocol
 from urllib.parse import urljoin
 from urllib3.exceptions import ProtocolError
+
 
 import bs4
 import requests
@@ -44,6 +45,12 @@ AO3_URL = "https://archiveofourown.org/"
 
 # https://imhentai.xxx/gallery/764389/
 # https://imhentai.xxx/gallery/905223/
+
+
+class File(Protocol):
+	def readlines(self) -> list[str]:
+		...
+
 
 def setup_logger(name, log_file, level=logging.INFO):
 	"""To setup as many loggers as you want"""
@@ -86,13 +93,18 @@ def ao3_btn(tag: bs4.element.Tag) -> bool:
 		return False
 
 def get_ao3(url: str) -> str | None:
+	# if current version is normal, next is adult version
+	# otherwise next is next chapter or None
+	if not url.strip("/").endswith("?view_adult=true"):
+		return url.strip("/") + "?view_adult=true"
+
 	page = requests.get(url, timeout=60)
 	soup = bs4.BeautifulSoup(page.text, "html.parser")
 	btns = soup.find_all(ao3_btn)
 
 	if btns:
 		next_url = urljoin(AO3_URL, btns[0].attrs["href"])
-		return prep_ao3_url(next_url)
+		return next_url.strip("#workskin")
 	return None
 
 
@@ -260,8 +272,8 @@ def add_link(url_original: str) -> str | None:
 	last_url = None
 
 	url = url_original.strip()
-	if url.startswith(AO3_URL):
-		url = prep_ao3_url(url)
+	#if url.startswith(AO3_URL):
+	#	url = prep_ao3_url(url)
 
 	while url:
 
@@ -315,11 +327,13 @@ def add_link(url_original: str) -> str | None:
 
 	return last_url
 
-
-def read_saved(file: str = None) -> list[str]:
+def read_saved(file: File | None = None) -> list[str]:
 	if not hasattr(read_saved, "lines"):
-		with open(SAVED_URLS, "r") as save_file:
-			lines = list(line.strip() for line in save_file.readlines())
+		if file is None:
+			with open(SAVED_URLS, "r") as save_file:
+				lines = list(line.strip() for line in save_file.readlines())
+		else:
+			lines = list(line.strip() for line in file.readlines())
 		read_saved.lines = lines
 	return read_saved.lines
 
@@ -395,7 +409,9 @@ def comp_format(url: str) -> str:
 			url = url.replace("view", "gallery")
 			url = url.rsplit("/", 1)[0]
 		return url
-	else:  # TODO: ao3, ff
+	elif url.startswith(AO3_URL):
+		return url.strip("?view_adult=true").split("chapters")[0]
+	else:  # TODO: ff
 		return url.strip("/")
 
 
@@ -410,7 +426,7 @@ def save_format(url: str | None) -> str | None:
 			url = url.replace("view", "gallery")
 			url = url.rsplit("/", 1)[0]
 		return url
-	return url
+	return url.strip("?view_adult=true")
 
 
 HELP = """Usage: python3 savetowayback.py [-uf] [URLS]...
