@@ -26,6 +26,7 @@ BLOCKED_BY_ROBOTS_DELAY = 120
 SAVE = True
 
 # TODO: Royal Road
+# TODO: on repeated errors check if page has already been saved
 
 FF_URL  = "https://www.fanfiction.net/"
 SB_URL  = "https://forums.spacebattles.com/"
@@ -93,6 +94,11 @@ def ao3_btn(tag: bs4.element.Tag) -> bool:
 		return False
 
 def get_ao3(url: str) -> str | None:
+	if url.endswith("?view_full_work=true"):
+		return url.strip("?view_full_work=true") + "?view_adult=true&view_full_work=true"
+	if url.endswith("?view_adult=true&view_full_work=true"):
+		return None
+
 	# if current version is normal, next is adult version
 	# otherwise next is next chapter or None
 	if not url.strip("/").endswith("?view_adult=true"):
@@ -105,6 +111,9 @@ def get_ao3(url: str) -> str | None:
 	if btns:
 		next_url = urljoin(AO3_URL, btns[0].attrs["href"])
 		return next_url.strip("#workskin")
+
+	if "/chapters/" in url:
+		return url.split("/chapters/")[0] + "?view_full_work=true"
 	return None
 
 
@@ -249,7 +258,7 @@ def get_imh(url: str) -> str | None:
 		parts[-2] = str(int(parts[-2]) + 1)
 		new_url = "/".join(parts)
 
-	page = requests.get(new_url, timeout=60)
+	page = requests.get(new_url, timeout=120)
 	soup = bs4.BeautifulSoup(page.text, "html.parser")
 
 	total_page_tag = soup.find(total_pages_imh)
@@ -286,7 +295,7 @@ def add_link(url_original: str) -> str | None:
 					accept_cache=True
 				)
 
-				print(f"Saved: {url}")
+				print("Saved: ", url)
 				time.sleep(DEFAULT_DELAY)
 
 				logging.info(f"Saved: {url}")
@@ -399,6 +408,7 @@ def save_url_list(urls: list[str], lines: list[str], url_queue: deque) -> None:
 			logger.info("Saving")
 
 def comp_format(url: str) -> str:
+	url = url.strip()
 	if url.startswith(SB_URL) or url.startswith(SV_URL) or url.startswith(QQ_URL):
 		return url.split("/page-")[0].strip("/")
 	elif url.startswith(NH_URL):
@@ -482,9 +492,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-	#time.sleep(1)
-
 	logging.info("Starting")
-
 	main()
 

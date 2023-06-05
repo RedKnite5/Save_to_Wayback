@@ -191,6 +191,11 @@ class CompFormat(TestCase):
 		url_formatted = "https://forums.spacebattles.com/threads/madokami-quest.252226"
 		self.assertEqual(url_formatted, save.comp_format(url))
 
+	def test_sb_no_page_newline(self):
+		url = "https://forums.spacebattles.com/threads/madokami-quest.252226/page-13\n"
+		url_formatted = "https://forums.spacebattles.com/threads/madokami-quest.252226"
+		self.assertEqual(url_formatted, save.comp_format(url))
+
 	def test_sb_page(self):
 		url = "https://forums.spacebattles.com/threads/madokami-quest.252226/"
 		url_formatted = "https://forums.spacebattles.com/threads/madokami-quest.252226"
@@ -198,6 +203,11 @@ class CompFormat(TestCase):
 
 	def test_sv_no_page(self):
 		url = "https://forums.sufficientvelocity.com/threads/splintered-worm-qa-quest.24509/"
+		url_formatted = "https://forums.sufficientvelocity.com/threads/splintered-worm-qa-quest.24509"
+		self.assertEqual(url_formatted, save.comp_format(url))
+
+	def test_sv_no_page_space(self):
+		url = " https://forums.sufficientvelocity.com/threads/splintered-worm-qa-quest.24509/ "
 		url_formatted = "https://forums.sufficientvelocity.com/threads/splintered-worm-qa-quest.24509"
 		self.assertEqual(url_formatted, save.comp_format(url))
 
