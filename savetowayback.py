@@ -317,22 +317,28 @@ def add_link(url_original: str) -> str | None:
 		else:
 			last_url = url_original.strip()
 
-		if url.startswith(FF_URL):
-			url = get_ffn(url)
-		elif url.startswith(SB_URL):
-			url = get_sb(url)
-		elif url.startswith(SV_URL):
-			url = get_sv(url)
-		elif url.startswith(QQ_URL):
-			url = get_qq(url)
-		elif url.startswith(NH_URL):
-			url = get_nh(url)
-		elif url.startswith(IMH_URL):
-			url = get_imh(url)
-		elif url.startswith(AO3_URL):
-			url = get_ao3(url)
-		else:
-			url = None
+		for i in range(10):  # try 10 times
+			try:
+				if url.startswith(FF_URL):
+					url = get_ffn(url)
+				elif url.startswith(SB_URL):
+					url = get_sb(url)
+				elif url.startswith(SV_URL):
+					url = get_sv(url)
+				elif url.startswith(QQ_URL):
+					url = get_qq(url)
+				elif url.startswith(NH_URL):
+					url = get_nh(url)
+				elif url.startswith(IMH_URL):
+					url = get_imh(url)
+				elif url.startswith(AO3_URL):
+					url = get_ao3(url)
+				else:
+					url = None
+				break
+			except requests.exceptions.ConnectionError as exc:
+				logger.error(f"Error {i+1} getting: {url}, {exc}")
+				time.sleep(1)
 
 	return last_url
 
@@ -396,6 +402,7 @@ def save_url_list(urls: list[str], lines: list[str], url_queue: deque) -> None:
 	url_queue.extend(url.strip() for url in urls)
 	for url in urls:
 		if is_saved(url):
+			url_queue.popleft()
 			continue
 		last = save_format(add_link(url))
 		if last:
