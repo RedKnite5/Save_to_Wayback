@@ -401,9 +401,9 @@ class GetAO3(TestCase):
 		next_url = "https://archiveofourown.org/works/30308658/chapters/77777837"
 		self.assertEqual(next_url, save.get_ao3(start_url))
 
-	def test_get_detect_last_page(self):
+	def test_get_full_work(self):
 		start_url = "https://archiveofourown.org/works/30308658/chapters/81088840?view_adult=true"
-		next_url = None
+		next_url = "https://archiveofourown.org/works/30308658?view_full_work=true"
 		self.assertEqual(next_url, save.get_ao3(start_url))
 
 
