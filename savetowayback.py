@@ -392,10 +392,15 @@ def is_saved(url: str, lines: Sequence[str] | None = None) -> bool:
 def update_old(lines: list[str]) -> None:
 	for index, preurl in enumerate(list(lines)):
 		url = preurl.strip()
-		if is_updatatable(url):
-			last = add_link(url)
-			if last:
-				lines[index] = last
+		if not is_updatatable(url):
+			continue
+		last = add_link(url)
+		if not last:
+			continue
+		lines[index] = last
+		if SAVE:
+			write_saved(lines, SAVED_URLS)
+			logger.info("Saving")
 
 
 def save_url_list(urls: list[str], lines: list[str], url_queue: deque) -> None:
