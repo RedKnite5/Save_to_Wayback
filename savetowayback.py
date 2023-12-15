@@ -26,7 +26,9 @@ BLOCKED_BY_ROBOTS_DELAY = 120
 SAVE = True
 
 # TODO: Royal Road
+# TODO: AO3 update old, update full text first
 # TODO: on repeated errors check if page has already been saved
+# TODO: continue after laptop gets closed while running. may already work???
 
 FF_URL  = "https://www.fanfiction.net/"
 SB_URL  = "https://forums.spacebattles.com/"
@@ -94,9 +96,7 @@ def ao3_btn(tag: bs4.element.Tag) -> bool:
 		return False
 
 def get_ao3(url: str) -> str | None:
-	if url.endswith("?view_full_work=true"):
-		return url.strip("?view_full_work=true") + "?view_adult=true&view_full_work=true"
-	if url.endswith("?view_adult=true&view_full_work=true"):
+	if url.endswith("view_full_work=true"):
 		return None
 
 	# if current version is normal, next is adult version
@@ -113,7 +113,9 @@ def get_ao3(url: str) -> str | None:
 		return next_url.strip("#workskin")
 
 	if "/chapters/" in url:
-		return url.split("/chapters/")[0] + "?view_full_work=true"
+		add_link(url.split("/chapters/")[0] + "?view_full_work=true")
+		add_link(url.split("/chapters/")[0] + "?view_adult=true&view_full_work=true")
+	
 	return None
 
 
@@ -289,6 +291,7 @@ def add_link(url_original: str) -> str | None:
 		errors = 0
 		while True:
 			try:
+				print("Start Saving")
 				save.capture(
 					url,
 					user_agent="mr.awesome10000@gmail.com using savepagenow",
