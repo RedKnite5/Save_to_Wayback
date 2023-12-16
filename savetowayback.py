@@ -86,197 +86,213 @@ def prep_ao3_url(url: str) -> str:
 
 	return url
 
+class WebsiteLink:
+	def __init__(self, url):
+		self.url = url
 
-def ao3_btn(tag: bs4.element.Tag) -> bool:
-	try:
-		assert "a" == tag.name
-		assert tag.text == "Next Chapter →"
-		return True
-	except AssertionError:
-		return False
+	def get_next(self):
+		pass
 
-def get_ao3(url: str) -> str | None:
-	if url.endswith("view_full_work=true"):
+class AO3Link(WebsiteLink):
+	@staticmethod
+	def ao3_btn(tag: bs4.element.Tag) -> bool:
+		try:
+			assert "a" == tag.name
+			assert tag.text == "Next Chapter →"
+			return True
+		except AssertionError:
+			return False
+
+	def get_ao3(self) -> str | None:
+		if self.url.endswith("view_full_work=true"):
+			return None
+
+		# if current version is normal, next is adult version
+		# otherwise next is next chapter or None
+		if not self.url.strip("/").endswith("?view_adult=true"):
+			return self.url.strip("/") + "?view_adult=true"
+
+		page = requests.get(self.url, timeout=60)
+		soup = bs4.BeautifulSoup(page.text, "html.parser")
+		btns = soup.find_all(self.ao3_btn)
+
+		if btns:
+			next_url = urljoin(AO3_URL, btns[0].attrs["href"])
+			return next_url.strip("#workskin")
+
+		if "/chapters/" in self.url:
+			add_link(self.url.split("/chapters/")[0] + "?view_full_work=true")
+			add_link(self.url.split("/chapters/")[0] + "?view_adult=true&view_full_work=true")
+		
 		return None
 
-	# if current version is normal, next is adult version
-	# otherwise next is next chapter or None
-	if not url.strip("/").endswith("?view_adult=true"):
-		return url.strip("/") + "?view_adult=true"
+class FFLink(WebsiteLink):
+	@staticmethod
+	def ffn_btn(tag: bs4.element.Tag) -> bool:
+		try:
+			assert ["btn"] == tag["class"]
+			assert tag.text == "Next >"
+			return True
+		except (KeyError, AssertionError):
+			return False
 
-	page = requests.get(url, timeout=60)
-	soup = bs4.BeautifulSoup(page.text, "html.parser")
-	btns = soup.find_all(ao3_btn)
+	def get_next(self) -> str | None:
+		page = requests.get(self.url, timeout=60)
+		soup = bs4.BeautifulSoup(page.text, "html.parser")
+		btns = soup.find_all(self.ffn_btn)
+		try:
+			assert btns[0]["onclick"] == btns[1]["onclick"]
+		except IndexError:
+			return None
+		assert btns[0]["onclick"].startswith("self.location='")
 
-	if btns:
-		next_url = urljoin(AO3_URL, btns[0].attrs["href"])
-		return next_url.strip("#workskin")
+		return urljoin(FF_URL, btns[0]["onclick"][15:][:-1])
 
-	if "/chapters/" in url:
-		add_link(url.split("/chapters/")[0] + "?view_full_work=true")
-		add_link(url.split("/chapters/")[0] + "?view_adult=true&view_full_work=true")
-	
-	return None
+class SBLink(WebsiteLink):
+	@staticmethod
+	def sb_btn(tag: bs4.element.Tag) -> bool:
+		try:
+			assert ["pageNav-jump", "pageNav-jump--next"] == tag["class"]
+			assert tag.text == "Next"
+			assert tag.name == "a"
+			return True
+		except (KeyError, AssertionError):
+			return False
 
+	def get_next(self) -> str | None:
+		page = requests.get(self.url, timeout=60)
+		soup = bs4.BeautifulSoup(page.text, "html.parser")
+		btns = soup.find_all(self.sb_btn)
+		try:
+			assert btns[0].attrs["href"] == btns[1].attrs["href"]
+		except IndexError:
+			return None
 
-def ffn_btn(tag: bs4.element.Tag) -> bool:
-	try:
-		assert ["btn"] == tag["class"]
-		assert tag.text == "Next >"
-		return True
-	except (KeyError, AssertionError):
-		return False
+		return urljoin(SB_URL, btns[0].attrs["href"])
 
-def get_ffn(url: str) -> str | None:
-	page = requests.get(url, timeout=60)
-	soup = bs4.BeautifulSoup(page.text, "html.parser")
-	btns = soup.find_all(ffn_btn)
-	try:
-		assert btns[0]["onclick"] == btns[1]["onclick"]
-	except IndexError:
-		return None
-	assert btns[0]["onclick"].startswith("self.location='")
+class SVLink(WebsiteLink):
+	def get_next(self) -> str | None:
+		page = requests.get(self.url, timeout=60)
+		soup = bs4.BeautifulSoup(page.text, "html.parser")
+		btns = soup.find_all(SBLink.sb_btn)
 
-	return urljoin(FF_URL, btns[0]["onclick"][15:][:-1])
+		try:
+			assert btns[0].attrs["href"] == btns[1].attrs["href"]
+		except IndexError:
+			return None
 
+		return urljoin(SV_URL, btns[0].attrs["href"])
 
-def sb_btn(tag: bs4.element.Tag) -> bool:
-	try:
-		assert ["pageNav-jump", "pageNav-jump--next"] == tag["class"]
-		assert tag.text == "Next"
-		assert tag.name == "a"
-		return True
-	except (KeyError, AssertionError):
-		return False
+class QQLink(WebsiteLink):
+	@staticmethod
+	def qq_btn(tag: bs4.element.Tag) -> bool:
+		try:
+			assert tag.name == "a"
+			assert ["text"] == tag["class"]
+			assert tag.text == "Next >"
+			return True
+		except (KeyError, AssertionError):
+			return False
 
-def get_sb(url: str) -> str | None:
-	page = requests.get(url, timeout=60)
-	soup = bs4.BeautifulSoup(page.text, "html.parser")
-	btns = soup.find_all(sb_btn)
-	try:
-		assert btns[0].attrs["href"] == btns[1].attrs["href"]
-	except IndexError:
-		return None
+	def get_next(self) -> str | None:
+		page = requests.get(self.url, timeout=60)
+		soup = bs4.BeautifulSoup(page.text, "html.parser")
+		btns = soup.find_all(self.qq_btn)
 
-	return urljoin(SB_URL, btns[0].attrs["href"])
+		try:
+			assert btns[0].attrs["href"] == btns[1].attrs["href"]
+		except IndexError:
+			return None
 
-def get_sv(url: str) -> str | None:
-	page = requests.get(url, timeout=60)
-	soup = bs4.BeautifulSoup(page.text, "html.parser")
-	btns = soup.find_all(sb_btn)
+		return urljoin(QQ_URL, btns[0].attrs["href"])
 
-	try:
-		assert btns[0].attrs["href"] == btns[1].attrs["href"]
-	except IndexError:
-		return None
+class NHLink(WebsiteLink):
+	@staticmethod
+	def check_nh(tag: bs4.element.Tag) -> bool:
+		try:
+			assert "404 – Not Found" in tag.text
+			return True
+		except AssertionError:
+			return False
 
-	return urljoin(SV_URL, btns[0].attrs["href"])
+	def get_next(self) -> str | None:
+		url = self.url.strip("/") + "/"
+		id_len = len(url[22:].split("/")[0])
 
+		new_url = None
+		if url[22 + id_len + 1:].count("/") > 0:
+			parts = url.split("/")
+			parts[-2] = str(int(parts[-2]) + 1)
+			new_url = "/".join(parts)
+		else:
+			new_url = url + "1"
+		
+		new_url = new_url.strip("/")
 
-def qq_btn(tag: bs4.element.Tag) -> bool:
-	try:
-		assert tag.name == "a"
-		assert ["text"] == tag["class"]
-		assert tag.text == "Next >"
-		return True
-	except (KeyError, AssertionError):
-		return False
+		page = requests.get(new_url, timeout=60)
+		soup = bs4.BeautifulSoup(page.text, "html.parser")
+		if soup.find_all(self.check_nh):
+			return None
+		return new_url
 
-def get_qq(url: str) -> str | None:
-	page = requests.get(url, timeout=60)
-	soup = bs4.BeautifulSoup(page.text, "html.parser")
-	btns = soup.find_all(qq_btn)
+class IMHLink(WebsiteLink):
+	@staticmethod
+	def make_imh_checker(pages: int) -> Callable[[bs4.element.Tag], bool]:
+		def check_imh(tag: bs4.element.Tag) -> bool:
+			try:
+				assert tag.name == "span"
+				assert tag["class"] == ["current"]
+				assert int(tag.text) > pages
 
-	try:
-		assert btns[0].attrs["href"] == btns[1].attrs["href"]
-	except IndexError:
-		return None
+				return True
+			except (AssertionError, KeyError):
+				return False
+		return check_imh
 
-	return urljoin(QQ_URL, btns[0].attrs["href"])
-
-
-def check_nh(tag: bs4.element.Tag) -> bool:
-	try:
-		assert "404 – Not Found" in tag.text
-		return True
-	except AssertionError:
-		return False
-
-def get_nh(url: str) -> str | None:
-	url = url.strip("/") + "/"
-	id_len = len(url[22:].split("/")[0])
-
-	new_url = None
-	if url[22 + id_len + 1:].count("/") > 0:
-		parts = url.split("/")
-		parts[-2] = str(int(parts[-2]) + 1)
-		new_url = "/".join(parts)
-	else:
-		new_url = url + "1"
-	
-	new_url = new_url.strip("/")
-
-	page = requests.get(new_url, timeout=60)
-	soup = bs4.BeautifulSoup(page.text, "html.parser")
-	if soup.find_all(check_nh):
-		return None
-	return new_url
-
-
-def make_imh_checker(pages: int) -> Callable[[bs4.element.Tag], bool]:
-	def check_imh(tag: bs4.element.Tag) -> bool:
+	@staticmethod
+	def total_pages_imh(tag: bs4.element.Tag) -> bool:
 		try:
 			assert tag.name == "span"
-			assert tag["class"] == ["current"]
-			assert int(tag.text) > pages
 
+			logger.debug(f"{tag['class'] = }")
+			assert tag["class"] == ["total_pages"]
 			return True
 		except (AssertionError, KeyError):
 			return False
-	return check_imh
 
-def total_pages_imh(tag: bs4.element.Tag) -> bool:
-	try:
-		assert tag.name == "span"
+	def get_next(self) -> str | None:
+		logger.debug(f"Getting next imh style url from {self.url}")
 
-		logger.debug(f"{tag['class'] = }")
-		assert tag["class"] == ["total_pages"]
-		return True
-	except (AssertionError, KeyError):
-		return False
+		new_url = None
+		url = self.url
 
-def get_imh(url: str) -> str | None:
-	logger.debug(f"Getting next imh style url from {url}")
+		if not url.endswith("/"):
+			url += "/"
 
-	new_url = None
+		if "gallery" in url:
+			new_url = url.replace("gallery", "view") + "1/"
+		else:
+			parts = url.split("/")
+			parts[-2] = str(int(parts[-2]) + 1)
+			new_url = "/".join(parts)
 
-	if not url.endswith("/"):
-		url += "/"
+		page = requests.get(new_url, timeout=120)
+		soup = bs4.BeautifulSoup(page.text, "html.parser")
 
-	if "gallery" in url:
-		new_url = url.replace("gallery", "view") + "1/"
-	else:
-		parts = url.split("/")
-		parts[-2] = str(int(parts[-2]) + 1)
-		new_url = "/".join(parts)
+		total_page_tag = soup.find(self.total_pages_imh)
+		if total_page_tag is None:
+			# should not write to saved file in this case
+			# currently does
+			append_update_extras(new_url)
+			logger.error(f"new redirecting url: {new_url}")
+			return None
+		pages = int(total_page_tag.text)
 
-	page = requests.get(new_url, timeout=120)
-	soup = bs4.BeautifulSoup(page.text, "html.parser")
+		logger.debug(f"imh total page count is {pages}")
 
-	total_page_tag = soup.find(total_pages_imh)
-	if total_page_tag is None:
-		# should not write to saved file in this case
-		# currently does
-		append_update_extras(new_url)
-		logger.error(f"new redirecting url: {new_url}")
-		return None
-	pages = int(total_page_tag.text)
-
-	logger.debug(f"imh total page count is {pages}")
-
-	if soup.find_all(make_imh_checker(pages)):
-		return None
-	return new_url
+		if soup.find_all(self.make_imh_checker(pages)):
+			return None
+		return new_url
 
 
 def add_link(url_original: str) -> str | None:
@@ -323,19 +339,19 @@ def add_link(url_original: str) -> str | None:
 		for i in range(10):  # try 10 times
 			try:
 				if url.startswith(FF_URL):
-					url = get_ffn(url)
+					url = FFLink(url).get_next()
 				elif url.startswith(SB_URL):
-					url = get_sb(url)
+					url = SBLink(url).get_next()
 				elif url.startswith(SV_URL):
-					url = get_sv(url)
+					url = SVLink(url).get_next()
 				elif url.startswith(QQ_URL):
-					url = get_qq(url)
+					url = QQLink(url).get_next()
 				elif url.startswith(NH_URL):
-					url = get_nh(url)
+					url = NHLink(url).get_next()
 				elif url.startswith(IMH_URL):
-					url = get_imh(url)
+					url = IMHLink(url).get_next()
 				elif url.startswith(AO3_URL):
-					url = get_ao3(url)
+					url = AO3Link(url).get_next()
 				else:
 					url = None
 				break
