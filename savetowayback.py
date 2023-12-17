@@ -26,7 +26,6 @@ BLOCKED_BY_ROBOTS_DELAY = 120
 SAVE = True
 
 # TODO: Royal Road
-# TODO: AO3 update old, update full text first
 # TODO: on repeated errors check if page has already been saved
 # TODO: continue after laptop gets closed while running. may already work???
 
@@ -55,7 +54,7 @@ class File(Protocol):
 		...
 
 
-def setup_logger(name, log_file, level=logging.INFO):
+def setup_logger(name: str, log_file: str, level: int=logging.INFO) -> logging.Logger:
 	"""To setup as many loggers as you want"""
 
 	handler = logging.FileHandler(log_file)
@@ -71,29 +70,36 @@ LOG_FILE = "urls_saved.log"
 logger = setup_logger("first_logger", LOG_FILE)
 
 
-def prep_ao3_url(url: str) -> str:
-	if not url.startswith(AO3_URL):
-		raise ValueError(f"Not AO3 url: {url}")
-
-	if url.endswith("#workskin"):
-		url = url[:-9]
-	if not url.endswith("?view_adult=true"):
-		url = url + "?view_adult=true"
-	# if view adult is not added then the actual content of the chapter
-	# is not saved. Saving both may be better, but only saving the
-	# adult version seems to work. This is less helpful in non-adult
-	# stories.
-
-	return url
-
 class WebsiteLink:
-	def __init__(self, url):
-		self.url = url
+	def __init__(self, url: str):
+		self.url: str = url
 
-	def get_next(self):
-		pass
+	def get_next(self) -> str | None:
+		return None
+
+	def is_updatatable(self) -> bool:
+		#not_updatable = [
+		#	NH_URL,
+		#	IMH_URL
+		#]
+
+		#for start in not_updatable:
+		#	if url.startswith(start):
+		#		return False
+		return True
+	
+	def comp_format(self) -> str:
+		return self.url.strip().strip("/")
+
+	def __repr__(self):
+		return f"Link({self.url})"
+	
 
 class AO3Link(WebsiteLink):
+	def __init__(self, url: str):
+		super().__init__(url)
+		#self.prep_ao3_url()
+
 	@staticmethod
 	def ao3_btn(tag: bs4.element.Tag) -> bool:
 		try:
@@ -103,14 +109,16 @@ class AO3Link(WebsiteLink):
 		except AssertionError:
 			return False
 
-	def get_ao3(self) -> str | None:
+	def get_next(self) -> str:
 		if self.url.endswith("view_full_work=true"):
-			return None
+			self.url = ""
+			return self.url
 
 		# if current version is normal, next is adult version
-		# otherwise next is next chapter or None
+		# otherwise next is next chapter or empty string
 		if not self.url.strip("/").endswith("?view_adult=true"):
-			return self.url.strip("/") + "?view_adult=true"
+			self.url = self.url.strip("/") + "?view_adult=true"
+			return self.url
 
 		page = requests.get(self.url, timeout=60)
 		soup = bs4.BeautifulSoup(page.text, "html.parser")
@@ -118,13 +126,32 @@ class AO3Link(WebsiteLink):
 
 		if btns:
 			next_url = urljoin(AO3_URL, btns[0].attrs["href"])
-			return next_url.strip("#workskin")
+			self.url = next_url.strip("#workskin")
+			return self.url
 
 		if "/chapters/" in self.url:
-			add_link(self.url.split("/chapters/")[0] + "?view_full_work=true")
-			add_link(self.url.split("/chapters/")[0] + "?view_adult=true&view_full_work=true")
+			base = self.url.split("/chapters/")[0]
+			add_link(base + "?view_full_work=true")
+			add_link(base + "?view_adult=true&view_full_work=true")
 		
-		return None
+		self.url = ""
+		return self.url
+	
+	def prep_ao3_url(self) -> None:
+		if not self.url.startswith(AO3_URL):
+			raise ValueError(f"Not AO3 url: {self.url}")
+
+		if self.url.endswith("#workskin"):
+			self.url = self.url[:-9]
+		if not self.url.endswith("?view_adult=true"):
+			self.url = self.url + "?view_adult=true"
+		# if view adult is not added then the actual content of the chapter
+		# is not saved. Saving both may be better, but only saving the
+		# adult version seems to work. This is less helpful in non-adult
+		# stories.
+	
+	def comp_format(self) -> str:
+		return self.url.strip().strip("?view_adult=true").split("chapters")[0]
 
 class FFLink(WebsiteLink):
 	@staticmethod
@@ -136,17 +163,26 @@ class FFLink(WebsiteLink):
 		except (KeyError, AssertionError):
 			return False
 
-	def get_next(self) -> str | None:
+	def is_updatatable(self) -> bool:
+		return False  # not updatable because blocked
+
+	def get_next(self) -> str:
 		page = requests.get(self.url, timeout=60)
 		soup = bs4.BeautifulSoup(page.text, "html.parser")
 		btns = soup.find_all(self.ffn_btn)
 		try:
 			assert btns[0]["onclick"] == btns[1]["onclick"]
 		except IndexError:
-			return None
+			self.url = ""
+			return self.url
 		assert btns[0]["onclick"].startswith("self.location='")
 
-		return urljoin(FF_URL, btns[0]["onclick"][15:][:-1])
+		self.url = urljoin(FF_URL, btns[0]["onclick"][15:][:-1])
+		return self.url
+
+	def comp_format(self) -> str:
+		# TODO: ff
+		return super().comp_format()
 
 class SBLink(WebsiteLink):
 	@staticmethod
@@ -159,19 +195,24 @@ class SBLink(WebsiteLink):
 		except (KeyError, AssertionError):
 			return False
 
-	def get_next(self) -> str | None:
+	def get_next(self) -> str:
 		page = requests.get(self.url, timeout=60)
 		soup = bs4.BeautifulSoup(page.text, "html.parser")
 		btns = soup.find_all(self.sb_btn)
 		try:
 			assert btns[0].attrs["href"] == btns[1].attrs["href"]
 		except IndexError:
-			return None
+			self.url = ""
+			return self.url
 
-		return urljoin(SB_URL, btns[0].attrs["href"])
+		self.url =  urljoin(SB_URL, btns[0].attrs["href"])
+		return self.url
+	
+	def comp_format(self) -> str:
+		return self.url.strip().split("/page-")[0].strip("/")
 
 class SVLink(WebsiteLink):
-	def get_next(self) -> str | None:
+	def get_next(self) -> str:
 		page = requests.get(self.url, timeout=60)
 		soup = bs4.BeautifulSoup(page.text, "html.parser")
 		btns = soup.find_all(SBLink.sb_btn)
@@ -179,9 +220,14 @@ class SVLink(WebsiteLink):
 		try:
 			assert btns[0].attrs["href"] == btns[1].attrs["href"]
 		except IndexError:
-			return None
+			self.url = ""
+			return self.url
 
-		return urljoin(SV_URL, btns[0].attrs["href"])
+		self.url = urljoin(SV_URL, btns[0].attrs["href"])
+		return self.url
+
+	def comp_format(self) -> str:
+		return self.url.strip().split("/page-")[0].strip("/")
 
 class QQLink(WebsiteLink):
 	@staticmethod
@@ -194,7 +240,7 @@ class QQLink(WebsiteLink):
 		except (KeyError, AssertionError):
 			return False
 
-	def get_next(self) -> str | None:
+	def get_next(self) -> str:
 		page = requests.get(self.url, timeout=60)
 		soup = bs4.BeautifulSoup(page.text, "html.parser")
 		btns = soup.find_all(self.qq_btn)
@@ -202,9 +248,14 @@ class QQLink(WebsiteLink):
 		try:
 			assert btns[0].attrs["href"] == btns[1].attrs["href"]
 		except IndexError:
-			return None
+			self.url = ""
+			return self.url
 
-		return urljoin(QQ_URL, btns[0].attrs["href"])
+		self.url = urljoin(QQ_URL, btns[0].attrs["href"])
+		return self.url
+
+	def comp_format(self) -> str:
+		return self.url.strip().split("/page-")[0].strip("/")
 
 class NHLink(WebsiteLink):
 	@staticmethod
@@ -214,12 +265,15 @@ class NHLink(WebsiteLink):
 			return True
 		except AssertionError:
 			return False
+	
+	def is_updatatable(self) -> bool:
+		return False
 
-	def get_next(self) -> str | None:
+	def get_next(self) -> str:
 		url = self.url.strip("/") + "/"
 		id_len = len(url[22:].split("/")[0])
 
-		new_url = None
+		new_url = ""
 		if url[22 + id_len + 1:].count("/") > 0:
 			parts = url.split("/")
 			parts[-2] = str(int(parts[-2]) + 1)
@@ -232,8 +286,13 @@ class NHLink(WebsiteLink):
 		page = requests.get(new_url, timeout=60)
 		soup = bs4.BeautifulSoup(page.text, "html.parser")
 		if soup.find_all(self.check_nh):
-			return None
-		return new_url
+			self.url = ""
+			return self.url
+		self.url = new_url
+		return self.url
+	
+	def comp_format(self) -> str:
+		return NH_URL + self.url.strip()[len(NH_URL):].split("/")[0]
 
 class IMHLink(WebsiteLink):
 	@staticmethod
@@ -249,6 +308,9 @@ class IMHLink(WebsiteLink):
 				return False
 		return check_imh
 
+	def is_updatatable(self) -> bool:
+		return False
+
 	@staticmethod
 	def total_pages_imh(tag: bs4.element.Tag) -> bool:
 		try:
@@ -260,7 +322,7 @@ class IMHLink(WebsiteLink):
 		except (AssertionError, KeyError):
 			return False
 
-	def get_next(self) -> str | None:
+	def get_next(self) -> str:
 		logger.debug(f"Getting next imh style url from {self.url}")
 
 		new_url = None
@@ -285,42 +347,84 @@ class IMHLink(WebsiteLink):
 			# currently does
 			append_update_extras(new_url)
 			logger.error(f"new redirecting url: {new_url}")
-			return None
+			self.url = ""
+			return self.url
 		pages = int(total_page_tag.text)
 
 		logger.debug(f"imh total page count is {pages}")
 
 		if soup.find_all(self.make_imh_checker(pages)):
-			return None
-		return new_url
+			self.url = ""
+			return self.url
+		self.url = new_url
+		return self.url
+	
+	def comp_format(self) -> str:
+		url = self.url.strip().strip("/")
+		if "view" in url:
+			url = url.replace("view", "gallery")
+			url = url.rsplit("/", 1)[0]
+		return url
 
+def make_link(url: str) -> WebsiteLink:
+	if url.startswith(FF_URL):
+		return FFLink(url)
+	elif url.startswith(SB_URL):
+		return SBLink(url)
+	elif url.startswith(SV_URL):
+		return SVLink(url)
+	elif url.startswith(QQ_URL):
+		return QQLink(url)
+	elif url.startswith(NH_URL):
+		return NHLink(url)
+	elif url.startswith(IMH_URL):
+		return IMHLink(url)
+	elif url.startswith(AO3_URL):
+		return AO3Link(url)
+	else:
+		return WebsiteLink(url)
+
+def pick_url_to_save(link: WebsiteLink, url_original: str) -> str:
+	if link.is_updatatable():
+		return link.url
+	else:
+		return url_original.strip()
+
+def attempt_get_next(link: WebsiteLink) -> WebsiteLink:
+	for i in range(10):  # try 10 times
+		try:
+			link.get_next()
+			return link
+		except requests.exceptions.ConnectionError as exc:
+			logger.error(f"Error {i+1} getting: {link.url}, {exc}")
+			time.sleep(1)
+	return WebsiteLink("")
 
 def add_link(url_original: str) -> str | None:
 	last_url = None
 
 	url = url_original.strip()
-	#if url.startswith(AO3_URL):
-	#	url = prep_ao3_url(url)
+	link = make_link(url)
 
-	while url:
-
+	while link.url:
 		errors = 0
 		while True:
 			try:
 				print("Start Saving")
+				logger.info("Start Saving")
 				save.capture(
-					url,
+					link.url,
 					user_agent="mr.awesome10000@gmail.com using savepagenow",
 					accept_cache=True
 				)
 
-				print("Saved: ", url)
+				print("Saved: ", link)
 				time.sleep(DEFAULT_DELAY)
 
-				logging.info(f"Saved: {url}")
+				logging.info(f"Saved: {link}")
 				break
 			except save.BlockedByRobots as exc:
-				logging.critical(f"Error{errors} Skipping blocked by robots: {url}, {exc}")
+				logging.critical(f"Error{errors} Skipping blocked by robots: {link}, {exc}")
 				# should not save in this case
 
 				time.sleep(BLOCKED_BY_ROBOTS_DELAY)
@@ -328,36 +432,16 @@ def add_link(url_original: str) -> str | None:
 				break
 			except Exception as exc:
 				errors += 1
-				logger.error(f"Error{errors}: {url}, {exc}")
+				logger.error(f"Error{errors}: {link}, {exc}")
 				time.sleep(TOOMANYREQUESTS_DELAY)
 
-		if is_updatatable(url):
-			last_url = url
-		else:
-			last_url = url_original.strip()
+		#if link.is_updatatable():
+		#	last_url = url
+		#else:
+		#	last_url = url_original.strip()
+		last_url = pick_url_to_save(link, url_original)
 
-		for i in range(10):  # try 10 times
-			try:
-				if url.startswith(FF_URL):
-					url = FFLink(url).get_next()
-				elif url.startswith(SB_URL):
-					url = SBLink(url).get_next()
-				elif url.startswith(SV_URL):
-					url = SVLink(url).get_next()
-				elif url.startswith(QQ_URL):
-					url = QQLink(url).get_next()
-				elif url.startswith(NH_URL):
-					url = NHLink(url).get_next()
-				elif url.startswith(IMH_URL):
-					url = IMHLink(url).get_next()
-				elif url.startswith(AO3_URL):
-					url = AO3Link(url).get_next()
-				else:
-					url = None
-				break
-			except requests.exceptions.ConnectionError as exc:
-				logger.error(f"Error {i+1} getting: {url}, {exc}")
-				time.sleep(1)
+		link = attempt_get_next(link)
 
 	return last_url
 
@@ -379,20 +463,6 @@ def append_update_extras(url: str, filename: str="update_extras.txt") -> None:
 	with open(filename, "a") as file:
 		file.write(url + "\n")
 
-
-def is_updatatable(url: str) -> bool:
-	"Or all possible failure conditions then invert the result"
-
-	not_updatable = [
-		NH_URL,
-		IMH_URL
-	]
-
-	for start in not_updatable:
-		if url.startswith(start):
-			return False
-	return True
-
 def is_saved(url: str, lines: Sequence[str] | None = None) -> bool:
 	if lines is None:
 		lines = read_saved()
@@ -411,7 +481,7 @@ def is_saved(url: str, lines: Sequence[str] | None = None) -> bool:
 def update_old(lines: list[str]) -> None:
 	for index, preurl in enumerate(list(lines)):
 		url = preurl.strip()
-		if not is_updatatable(url):
+		if not make_link(url).is_updatatable():
 			continue
 		last = add_link(url)
 		if not last:
@@ -422,7 +492,8 @@ def update_old(lines: list[str]) -> None:
 			logger.info("Saving")
 
 
-def save_url_list(urls: list[str], lines: list[str], url_queue: deque) -> None:
+def save_url_list(urls: list[str], lines: list[str], save_to_new: bool) -> None:
+	url_queue: deque[str] = deque()
 	url_queue.extend(url.strip() for url in urls)
 	for url in urls:
 		if is_saved(url):
@@ -435,25 +506,13 @@ def save_url_list(urls: list[str], lines: list[str], url_queue: deque) -> None:
 		url_queue.popleft()
 		if SAVE:
 			write_saved(lines, SAVED_URLS)
-			write_saved(url_queue, NEW_URLS)
+			if save_to_new:
+				write_saved(url_queue, NEW_URLS)
 			logger.info("Saving")
 
+
 def comp_format(url: str) -> str:
-	url = url.strip()
-	if url.startswith(SB_URL) or url.startswith(SV_URL) or url.startswith(QQ_URL):
-		return url.split("/page-")[0].strip("/")
-	elif url.startswith(NH_URL):
-		return NH_URL + url[len(NH_URL):].split("/")[0]
-	elif url.startswith(IMH_URL):
-		url = url.strip("/")
-		if "view" in url:
-			url = url.replace("view", "gallery")
-			url = url.rsplit("/", 1)[0]
-		return url
-	elif url.startswith(AO3_URL):
-		return url.strip("?view_adult=true").split("chapters")[0]
-	else:  # TODO: ff
-		return url.strip("/")
+	return make_link(url).comp_format()
 
 
 def save_format(url: str | None) -> str | None:
@@ -496,14 +555,13 @@ def main() -> None:
 			update_old(lines)
 			given.remove("-u")
 
-		url_queue = deque()
 		if "-f" in sys.argv:
 			given.remove("-f")
 			with open(NEW_URLS, "r") as file:
 				urls = file.readlines()
-			save_url_list(urls, lines, url_queue)
+			save_url_list(urls, lines, save_to_new=True)
 
-		save_url_list(given, lines, url_queue)
+		save_url_list(given, lines, save_to_new=False)
 
 		lines = list(set(lines))
 	except BaseException as exc:
