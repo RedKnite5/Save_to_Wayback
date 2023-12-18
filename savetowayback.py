@@ -48,6 +48,7 @@ AO3_URL = "https://archiveofourown.org/"
 # https://imhentai.xxx/gallery/764389/
 # https://imhentai.xxx/gallery/905223/
 
+TagIdentifier = Callable[[bs4.element.Tag], bool]
 
 open_utf8 = partial(open, encoding="utf-8")
 
@@ -110,6 +111,10 @@ class Saved:
 			self.lines[index] = last
 			self.save()
 
+def get_elements(url: str, func: TagIdentifier):
+	page = requests.get(url, timeout=60)
+	soup = bs4.BeautifulSoup(page.text, "html.parser")
+	return soup.find_all(func)
 
 class WebsiteLink:
 	def __init__(self, url: str):
@@ -195,7 +200,7 @@ class AO3Link(WebsiteLink):
 
 class FFLink(WebsiteLink):
 	@staticmethod
-	def ffn_btn(tag: bs4.element.Tag) -> bool:
+	def check_btn(tag: bs4.element.Tag) -> bool:
 		try:
 			assert ["btn"] == tag["class"]
 			assert tag.text == "Next >"
@@ -207,9 +212,7 @@ class FFLink(WebsiteLink):
 		return False  # not updatable because blocked
 
 	def get_next(self) -> str:
-		page = requests.get(self.url, timeout=60)
-		soup = bs4.BeautifulSoup(page.text, "html.parser")
-		btns = soup.find_all(self.ffn_btn)
+		btns = get_elements(self.url, self.check_btn)
 		try:
 			assert btns[0]["onclick"] == btns[1]["onclick"]
 		except IndexError:
@@ -222,7 +225,7 @@ class FFLink(WebsiteLink):
 
 class SBLink(WebsiteLink):
 	@staticmethod
-	def sb_btn(tag: bs4.element.Tag) -> bool:
+	def check_btn(tag: bs4.element.Tag) -> bool:
 		try:
 			assert ["pageNav-jump", "pageNav-jump--next"] == tag["class"]
 			assert tag.text == "Next"
@@ -232,9 +235,7 @@ class SBLink(WebsiteLink):
 			return False
 
 	def get_next(self) -> str:
-		page = requests.get(self.url, timeout=60)
-		soup = bs4.BeautifulSoup(page.text, "html.parser")
-		btns = soup.find_all(self.sb_btn)
+		btns = get_elements(self.url, self.check_btn)
 		try:
 			assert btns[0].attrs["href"] == btns[1].attrs["href"]
 		except IndexError:
@@ -249,9 +250,7 @@ class SBLink(WebsiteLink):
 
 class SVLink(WebsiteLink):
 	def get_next(self) -> str:
-		page = requests.get(self.url, timeout=60)
-		soup = bs4.BeautifulSoup(page.text, "html.parser")
-		btns = soup.find_all(SBLink.sb_btn)
+		btns = get_elements(self.url, SBLink.check_btn)
 
 		try:
 			assert btns[0].attrs["href"] == btns[1].attrs["href"]
@@ -267,7 +266,7 @@ class SVLink(WebsiteLink):
 
 class QQLink(WebsiteLink):
 	@staticmethod
-	def qq_btn(tag: bs4.element.Tag) -> bool:
+	def check_btn(tag: bs4.element.Tag) -> bool:
 		try:
 			assert tag.name == "a"
 			assert ["text"] == tag["class"]
@@ -277,9 +276,7 @@ class QQLink(WebsiteLink):
 			return False
 
 	def get_next(self) -> str:
-		page = requests.get(self.url, timeout=60)
-		soup = bs4.BeautifulSoup(page.text, "html.parser")
-		btns = soup.find_all(self.qq_btn)
+		btns = get_elements(self.url, self.check_btn)
 
 		try:
 			assert btns[0].attrs["href"] == btns[1].attrs["href"]
@@ -319,9 +316,7 @@ class NHLink(WebsiteLink):
 
 		new_url = new_url.strip("/")
 
-		page = requests.get(new_url, timeout=60)
-		soup = bs4.BeautifulSoup(page.text, "html.parser")
-		if soup.find_all(self.check_nh):
+		if get_elements(self.url, self.check_nh):
 			self.url = ""
 			return self.url
 		self.url = new_url
