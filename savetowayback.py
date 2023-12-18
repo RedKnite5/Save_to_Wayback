@@ -448,29 +448,29 @@ def attempt_get_next(link: WebsiteLink) -> WebsiteLink:
 			time.sleep(1)
 	return WebsiteLink("")
 
+def capture_with_logging(link: WebsiteLink) -> None:
+	print("Start Saving")
+	logger.info("Start Saving")
+	save.capture(
+		link.url,
+		user_agent="mr.awesome10000@gmail.com using savepagenow",
+		accept_cache=True
+	)
+
+	print("Saved: ", link)
+	logging.info(f"Saved: {link}")
+
 def save_url(link: WebsiteLink) -> None:
 	errors = 0
 	while True:
 		try:
-			print("Start Saving")
-			logger.info("Start Saving")
-			save.capture(
-				link.url,
-				user_agent="mr.awesome10000@gmail.com using savepagenow",
-				accept_cache=True
-			)
-
-			print("Saved: ", link)
+			capture_with_logging(link)
 			time.sleep(DEFAULT_DELAY)
-
-			logging.info(f"Saved: {link}")
 			return
 		except save.BlockedByRobots as exc:
 			logging.critical(f"Error{errors} Skipping blocked by robots: {link}, {exc}")
 			# should not save in this case
-
 			time.sleep(BLOCKED_BY_ROBOTS_DELAY)
-
 			return
 		except Exception as exc:
 			errors += 1
