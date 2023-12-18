@@ -36,6 +36,7 @@ QQ_URL  = "https://forum.questionablequesting.com/"
 NH_URL  = "https://nhentai.net/g/"
 IMH_URL = "https://imhentai.xxx/"
 AO3_URL = "https://archiveofourown.org/"
+RR_URL  = "https://www.royalroad.com/"
 
 
 # ffn now has NOARCHIVE and doesnt work
@@ -71,6 +72,10 @@ def setup_logger(
 LOG_FILE = "urls_saved.log"
 logger = setup_logger("first_logger", LOG_FILE)
 
+def cut_end(string: str, ending: str) -> str:
+	if string.endswith(ending):
+		return string[:-len(ending)]
+	return string
 
 class Saved:
 	def __init__(self, file: str):
@@ -144,6 +149,22 @@ class WebsiteLink:
 	def __repr__(self) -> str:
 		return f"Link({self.url})"
 
+class RRLink(WebsiteLink):
+	@staticmethod
+	def check_btn(tag: bs4.element.Tag) -> bool:
+		if tag.name == "a" and tag.text == "Next Chapter":
+			return True
+		return False
+
+	def get_next(self) -> str:
+		btns = get_elements(self.url, self.check_btn)
+		if btns:
+			self.url = urljoin(RR_URL, btns[0].attrs["href"])
+			return self.url
+
+		self.url = ""  # should never get here
+		return self.url
+
 class AO3Link(WebsiteLink):
 	#def __init__(self, url: str):
 	#	super().__init__(url)
@@ -170,7 +191,7 @@ class AO3Link(WebsiteLink):
 
 		if btns:
 			next_url = urljoin(AO3_URL, btns[0].attrs["href"])
-			self.url = next_url.strip("#workskin")
+			self.url = cut_end(next_url, "#workskin")
 			return self.url
 
 		if "/chapters/" in self.url:
@@ -195,7 +216,7 @@ class AO3Link(WebsiteLink):
 		# stories.
 
 	def comp_format(self) -> str:
-		return self.url.strip().strip("?view_adult=true").split("chapters")[0]
+		return cut_end(self.url.strip(), "?view_adult=true").split("chapters")[0]
 
 class FFLink(WebsiteLink):
 	@staticmethod
@@ -405,6 +426,7 @@ def make_link(url: str) -> WebsiteLink:
 		(NH_URL, NHLink),
 		(IMH_URL, IMHLink),
 		(AO3_URL, AO3Link),
+		(RR_URL, RRLink),
 	)
 	for url_start, link_class in string_class_pairing:
 		if url.startswith(url_start):
@@ -414,8 +436,7 @@ def make_link(url: str) -> WebsiteLink:
 def pick_url_to_save(link: WebsiteLink, url_original: str) -> str:
 	if link.is_updatatable():
 		return link.url
-	else:
-		return url_original.strip()
+	return url_original.strip()
 
 def attempt_get_next(link: WebsiteLink) -> WebsiteLink:
 	for i in range(10):  # try 10 times
@@ -474,9 +495,10 @@ def write_saved(lines: Sequence[str], filename: str) -> None:
 		save_file.write("\n".join(lines))
 
 def append_update_extras(url: str, filename: str="update_extras.txt") -> None:
-	if SAVE:
-		with open_utf8(filename, "a") as file:
-			file.write(url + "\n")
+	if not SAVE:
+		return
+	with open_utf8(filename, "a") as file:
+		file.write(url + "\n")
 
 def save_url_list(urls: Sequence[str], saved: Saved, save_to_new: bool) -> None:
 	url_queue: deque[str] = deque()
@@ -499,6 +521,9 @@ def comp_format(url: str) -> str:
 
 def save_format(url: str | None) -> str | None:
 	"""Format the url to be saved in the save file"""
+
+	# TODO: move to classes
+
 	if not url:
 		return url
 
@@ -508,7 +533,7 @@ def save_format(url: str | None) -> str | None:
 			url = url.replace("view", "gallery")
 			url = url.rsplit("/", 1)[0]
 		return url
-	return url.strip("?view_adult=true")
+	return cut_end(url, "?view_adult=true")
 
 HELP = """Usage: python3 savetowayback.py [-uf] [URLS]...
 	Save webpages to the wayback machine.
