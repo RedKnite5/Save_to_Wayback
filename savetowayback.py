@@ -52,7 +52,11 @@ TagIdentifier = Callable[[bs4.element.Tag], bool]
 
 open_utf8 = partial(open, encoding="utf-8")
 
-def setup_logger(name: str, log_file: str, level: int=logging.INFO) -> logging.Logger:
+def setup_logger(
+		name: str,
+		log_file: str,
+		level: int=logging.INFO
+		) -> logging.Logger:
 	"""To setup as many loggers as you want"""
 
 	handler = logging.FileHandler(log_file)
@@ -146,13 +150,10 @@ class AO3Link(WebsiteLink):
 		#self.prep_ao3_url()
 
 	@staticmethod
-	def ao3_btn(tag: bs4.element.Tag) -> bool:
-		try:
-			assert "a" == tag.name
-			assert tag.text == "Next Chapter →"
+	def check_btn(tag: bs4.element.Tag) -> bool:
+		if tag.name == "a" and tag.text == "Next Chapter →":
 			return True
-		except AssertionError:
-			return False
+		return False
 
 	def get_next(self) -> str:
 		if self.url.endswith("view_full_work=true"):
@@ -165,9 +166,7 @@ class AO3Link(WebsiteLink):
 			self.url = self.url.strip("/") + "?view_adult=true"
 			return self.url
 
-		page = requests.get(self.url, timeout=60)
-		soup = bs4.BeautifulSoup(page.text, "html.parser")
-		btns = soup.find_all(self.ao3_btn)
+		btns = get_elements(self.url, self.check_btn)
 
 		if btns:
 			next_url = urljoin(AO3_URL, btns[0].attrs["href"])
@@ -201,21 +200,16 @@ class AO3Link(WebsiteLink):
 class FFLink(WebsiteLink):
 	@staticmethod
 	def check_btn(tag: bs4.element.Tag) -> bool:
-		try:
-			assert ["btn"] == tag["class"]
-			assert tag.text == "Next >"
+		if tag.get("class") == ["btn"] and tag.text == "Next >":
 			return True
-		except (KeyError, AssertionError):
-			return False
+		return False
 
 	def is_updatatable(self) -> bool:
 		return False  # not updatable because blocked
 
 	def get_next(self) -> str:
 		btns = get_elements(self.url, self.check_btn)
-		try:
-			assert btns[0]["onclick"] == btns[1]["onclick"]
-		except IndexError:
+		if len(btns) < 2 or btns[0].get("onclick") != btns[1].get("onclick"):
 			self.url = ""
 			return self.url
 		assert btns[0]["onclick"].startswith("self.location='")
@@ -226,19 +220,17 @@ class FFLink(WebsiteLink):
 class SBLink(WebsiteLink):
 	@staticmethod
 	def check_btn(tag: bs4.element.Tag) -> bool:
-		try:
-			assert ["pageNav-jump", "pageNav-jump--next"] == tag["class"]
-			assert tag.text == "Next"
-			assert tag.name == "a"
-			return True
-		except (KeyError, AssertionError):
+		if tag.get("class") != ["pageNav-jump", "pageNav-jump--next"]:
 			return False
+		if tag.text != "Next" or tag.name != "a":
+			return False
+		return True
 
 	def get_next(self) -> str:
 		btns = get_elements(self.url, self.check_btn)
-		try:
-			assert btns[0].attrs["href"] == btns[1].attrs["href"]
-		except IndexError:
+		if (len(btns) < 2
+	  		or btns[0].attrs.get("href") != btns[1].attrs.get("href")):
+
 			self.url = ""
 			return self.url
 
@@ -563,7 +555,6 @@ def main() -> None:
 		raise
 	finally:
 		logger.info("Stopping")
-
 
 
 if __name__ == "__main__":
