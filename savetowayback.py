@@ -302,8 +302,8 @@ class NHLink(WebsiteLink):
 	def is_updatatable(self) -> bool:
 		return False
 
-	def get_next(self) -> str:
-		url = self.url.strip("/") + "/"
+	def make_new_url(self, url: str) -> str:
+		url = url.strip("/") + "/"
 		id_len = len(url[22:].split("/")[0])
 
 		new_url = ""
@@ -314,7 +314,10 @@ class NHLink(WebsiteLink):
 		else:
 			new_url = url + "1"
 
-		new_url = new_url.strip("/")
+		return new_url.strip("/")
+
+	def get_next(self) -> str:
+		new_url = self.make_new_url(self.url)
 
 		if get_elements(self.url, self.check_nh):
 			self.url = ""
@@ -353,6 +356,14 @@ class IMHLink(WebsiteLink):
 		except (AssertionError, KeyError):
 			return False
 
+	def make_new_url(self, url: str) -> str:
+		if "gallery" in url:
+			return url.replace("gallery", "view") + "1/"
+
+		parts = url.split("/")
+		parts[-2] = str(int(parts[-2]) + 1)
+		return "/".join(parts)
+
 	def get_next(self) -> str:
 		logger.debug(f"Getting next imh style url from {self.url}")
 
@@ -362,17 +373,12 @@ class IMHLink(WebsiteLink):
 		if not url.endswith("/"):
 			url += "/"
 
-		if "gallery" in url:
-			new_url = url.replace("gallery", "view") + "1/"
-		else:
-			parts = url.split("/")
-			parts[-2] = str(int(parts[-2]) + 1)
-			new_url = "/".join(parts)
+		new_url = self.make_new_url(url)
 
 		page = requests.get(new_url, timeout=120)
 		soup = bs4.BeautifulSoup(page.text, "html.parser")
-
 		total_page_tag = soup.find(self.total_pages_imh)
+
 		if total_page_tag is None:
 			# should not write to saved file in this case
 			# currently does
@@ -400,20 +406,19 @@ class IMHLink(WebsiteLink):
 def make_link(url: str) -> WebsiteLink:
 	if url.startswith(FF_URL):
 		return FFLink(url)
-	elif url.startswith(SB_URL):
+	if url.startswith(SB_URL):
 		return SBLink(url)
-	elif url.startswith(SV_URL):
+	if url.startswith(SV_URL):
 		return SVLink(url)
-	elif url.startswith(QQ_URL):
+	if url.startswith(QQ_URL):
 		return QQLink(url)
-	elif url.startswith(NH_URL):
+	if url.startswith(NH_URL):
 		return NHLink(url)
-	elif url.startswith(IMH_URL):
+	if url.startswith(IMH_URL):
 		return IMHLink(url)
-	elif url.startswith(AO3_URL):
+	if url.startswith(AO3_URL):
 		return AO3Link(url)
-	else:
-		return WebsiteLink(url)
+	return WebsiteLink(url)
 
 def pick_url_to_save(link: WebsiteLink, url_original: str) -> str:
 	if link.is_updatatable():

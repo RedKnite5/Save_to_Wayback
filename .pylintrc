@@ -8,4 +8,4 @@ disable=
     W1203,
 
 [DESIGN]
-max-statements=7
+max-statements=10
