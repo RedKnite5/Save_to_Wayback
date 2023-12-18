@@ -115,7 +115,7 @@ class Saved:
 			self.lines[index] = last
 			self.save()
 
-def get_elements(url: str, func: TagIdentifier):
+def get_elements(url: str, func: TagIdentifier) -> list[bs4.element.Tag]:
 	page = requests.get(url, timeout=60)
 	soup = bs4.BeautifulSoup(page.text, "html.parser")
 	return soup.find_all(func)
@@ -212,9 +212,14 @@ class FFLink(WebsiteLink):
 		if len(btns) < 2 or btns[0].get("onclick") != btns[1].get("onclick"):
 			self.url = ""
 			return self.url
-		assert btns[0]["onclick"].startswith("self.location='")
+		# assert btns[0]["onclick"].startswith("self.location='")
 
-		self.url = urljoin(FF_URL, btns[0]["onclick"][15:][:-1])
+		url_end = btns[0]["onclick"][15:][:-1]
+		if isinstance(url_end, str):
+			self.url = urljoin(FF_URL, url_end)
+			return self.url
+
+		self.url = ""  # should never get here
 		return self.url
 
 class SBLink(WebsiteLink):
@@ -244,13 +249,13 @@ class SVLink(WebsiteLink):
 	def get_next(self) -> str:
 		btns = get_elements(self.url, SBLink.check_btn)
 
-		try:
-			assert btns[0].attrs["href"] == btns[1].attrs["href"]
-		except IndexError:
+		if (len(btns) < 2
+	  		or btns[0].attrs.get("href") != btns[1].attrs.get("href")):
+
 			self.url = ""
 			return self.url
 
-		self.url = urljoin(SV_URL, btns[0].attrs["href"])
+		self.url =  urljoin(SV_URL, btns[0].attrs["href"])
 		return self.url
 
 	def comp_format(self) -> str:
@@ -259,24 +264,22 @@ class SVLink(WebsiteLink):
 class QQLink(WebsiteLink):
 	@staticmethod
 	def check_btn(tag: bs4.element.Tag) -> bool:
-		try:
-			assert tag.name == "a"
-			assert ["text"] == tag["class"]
-			assert tag.text == "Next >"
+		if (tag.name == "a"
+			and tag.get("class") == ["text"]
+			and tag.text == "Next >"):
 			return True
-		except (KeyError, AssertionError):
-			return False
+		return False
 
 	def get_next(self) -> str:
 		btns = get_elements(self.url, self.check_btn)
 
-		try:
-			assert btns[0].attrs["href"] == btns[1].attrs["href"]
-		except IndexError:
+		if (len(btns) < 2
+	  		or btns[0].attrs.get("href") != btns[1].attrs.get("href")):
+
 			self.url = ""
 			return self.url
 
-		self.url = urljoin(QQ_URL, btns[0].attrs["href"])
+		self.url =  urljoin(QQ_URL, btns[0].attrs["href"])
 		return self.url
 
 	def comp_format(self) -> str:
@@ -285,11 +288,9 @@ class QQLink(WebsiteLink):
 class NHLink(WebsiteLink):
 	@staticmethod
 	def check_nh(tag: bs4.element.Tag) -> bool:
-		try:
-			assert "404 – Not Found" in tag.text
+		if "404 – Not Found" in tag.text:
 			return True
-		except AssertionError:
-			return False
+		return False
 
 	def is_updatatable(self) -> bool:
 		return False
@@ -396,20 +397,18 @@ class IMHLink(WebsiteLink):
 		return url
 
 def make_link(url: str) -> WebsiteLink:
-	if url.startswith(FF_URL):
-		return FFLink(url)
-	if url.startswith(SB_URL):
-		return SBLink(url)
-	if url.startswith(SV_URL):
-		return SVLink(url)
-	if url.startswith(QQ_URL):
-		return QQLink(url)
-	if url.startswith(NH_URL):
-		return NHLink(url)
-	if url.startswith(IMH_URL):
-		return IMHLink(url)
-	if url.startswith(AO3_URL):
-		return AO3Link(url)
+	string_class_pairing = (
+		(FF_URL, FFLink),
+		(SB_URL, SBLink),
+		(SV_URL, SVLink),
+		(QQ_URL, QQLink),
+		(NH_URL, NHLink),
+		(IMH_URL, IMHLink),
+		(AO3_URL, AO3Link),
+	)
+	for url_start, link_class in string_class_pairing:
+		if url.startswith(url_start):
+			return link_class(url)
 	return WebsiteLink(url)
 
 def pick_url_to_save(link: WebsiteLink, url_original: str) -> str:
