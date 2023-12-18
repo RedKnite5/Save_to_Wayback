@@ -70,6 +70,11 @@ LOG_FILE = "urls_saved.log"
 logger = setup_logger("first_logger", LOG_FILE)
 
 
+class Saved:
+	def __init__(self):
+		self.lines: list[str] = []
+
+
 class WebsiteLink:
 	def __init__(self, url: str):
 		self.url: str = url
@@ -93,7 +98,6 @@ class WebsiteLink:
 
 	def __repr__(self):
 		return f"Link({self.url})"
-	
 
 class AO3Link(WebsiteLink):
 	def __init__(self, url: str):
