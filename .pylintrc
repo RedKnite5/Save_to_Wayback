@@ -1,2 +1,11 @@
 [FORMAT]
 indent-string=\t
+
+[MASTER]
+disable=
+    C0114, # missing-module-docstring
+    C0116, # missing-function-docstring
+    W1203,
+
+[DESIGN]
+max-statements=7

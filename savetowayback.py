@@ -8,10 +8,9 @@ import logging
 import sys
 import time
 from collections import deque
-from typing import Callable, Sequence, Protocol
+from collections.abc import Callable, Sequence
 from urllib.parse import urljoin
-from urllib3.exceptions import ProtocolError
-
+from functools import partial
 
 import bs4
 import requests
@@ -28,6 +27,7 @@ SAVE = True
 # TODO: Royal Road
 # TODO: on repeated errors check if page has already been saved
 # TODO: continue after laptop gets closed while running. may already work???
+# TODO: ff comp_format
 
 FF_URL  = "https://www.fanfiction.net/"
 SB_URL  = "https://forums.spacebattles.com/"
@@ -49,20 +49,18 @@ AO3_URL = "https://archiveofourown.org/"
 # https://imhentai.xxx/gallery/905223/
 
 
-#class File(Protocol):
-#	def readlines(self) -> list[str]: ...
-
+open_utf8 = partial(open, encoding="utf-8")
 
 def setup_logger(name: str, log_file: str, level: int=logging.INFO) -> logging.Logger:
 	"""To setup as many loggers as you want"""
 
 	handler = logging.FileHandler(log_file)
 
-	logger = logging.getLogger(name)
-	logger.setLevel(level)
-	logger.addHandler(handler)
+	log = logging.getLogger(name)
+	log.setLevel(level)
+	log.addHandler(handler)
 
-	return logger
+	return log
 
 
 LOG_FILE = "urls_saved.log"
@@ -74,9 +72,8 @@ class Saved:
 		self.filename = file
 		self.lines: list[str] = self.read_saved()
 
-
 	def read_saved(self) -> list[str]:
-		with open(self.filename, "r") as save_file:
+		with open_utf8(self.filename, "r") as save_file:
 			return list(line.strip() for line in save_file.readlines())
 
 	def is_saved(self, url: str) -> bool:
@@ -93,7 +90,7 @@ class Saved:
 
 	def add(self, item: str) -> None:
 		self.lines.append(item)
-	
+
 	def clear_dupes(self) -> None:
 		self.lines = list(set(self.lines))
 
@@ -131,7 +128,7 @@ class WebsiteLink:
 		#	if url.startswith(start):
 		#		return False
 		return True
-	
+
 	def comp_format(self) -> str:
 		return self.url.strip().strip("/")
 
@@ -139,8 +136,8 @@ class WebsiteLink:
 		return f"Link({self.url})"
 
 class AO3Link(WebsiteLink):
-	def __init__(self, url: str):
-		super().__init__(url)
+	#def __init__(self, url: str):
+	#	super().__init__(url)
 		#self.prep_ao3_url()
 
 	@staticmethod
@@ -176,10 +173,10 @@ class AO3Link(WebsiteLink):
 			base = self.url.split("/chapters/")[0]
 			add_link(base + "?view_full_work=true")
 			add_link(base + "?view_adult=true&view_full_work=true")
-		
+
 		self.url = ""
 		return self.url
-	
+
 	def prep_ao3_url(self) -> None:
 		if not self.url.startswith(AO3_URL):
 			raise ValueError(f"Not AO3 url: {self.url}")
@@ -192,7 +189,7 @@ class AO3Link(WebsiteLink):
 		# is not saved. Saving both may be better, but only saving the
 		# adult version seems to work. This is less helpful in non-adult
 		# stories.
-	
+
 	def comp_format(self) -> str:
 		return self.url.strip().strip("?view_adult=true").split("chapters")[0]
 
@@ -223,10 +220,6 @@ class FFLink(WebsiteLink):
 		self.url = urljoin(FF_URL, btns[0]["onclick"][15:][:-1])
 		return self.url
 
-	def comp_format(self) -> str:
-		# TODO: ff
-		return super().comp_format()
-
 class SBLink(WebsiteLink):
 	@staticmethod
 	def sb_btn(tag: bs4.element.Tag) -> bool:
@@ -250,7 +243,7 @@ class SBLink(WebsiteLink):
 
 		self.url =  urljoin(SB_URL, btns[0].attrs["href"])
 		return self.url
-	
+
 	def comp_format(self) -> str:
 		return self.url.strip().split("/page-")[0].strip("/")
 
@@ -308,7 +301,7 @@ class NHLink(WebsiteLink):
 			return True
 		except AssertionError:
 			return False
-	
+
 	def is_updatatable(self) -> bool:
 		return False
 
@@ -323,7 +316,7 @@ class NHLink(WebsiteLink):
 			new_url = "/".join(parts)
 		else:
 			new_url = url + "1"
-		
+
 		new_url = new_url.strip("/")
 
 		page = requests.get(new_url, timeout=60)
@@ -333,7 +326,7 @@ class NHLink(WebsiteLink):
 			return self.url
 		self.url = new_url
 		return self.url
-	
+
 	def comp_format(self) -> str:
 		return NH_URL + self.url.strip()[len(NH_URL):].split("/")[0]
 
@@ -401,7 +394,7 @@ class IMHLink(WebsiteLink):
 			return self.url
 		self.url = new_url
 		return self.url
-	
+
 	def comp_format(self) -> str:
 		url = self.url.strip().strip("/")
 		if "view" in url:
@@ -443,6 +436,35 @@ def attempt_get_next(link: WebsiteLink) -> WebsiteLink:
 			time.sleep(1)
 	return WebsiteLink("")
 
+def save_url(link: WebsiteLink) -> None:
+	errors = 0
+	while True:
+		try:
+			print("Start Saving")
+			logger.info("Start Saving")
+			save.capture(
+				link.url,
+				user_agent="mr.awesome10000@gmail.com using savepagenow",
+				accept_cache=True
+			)
+
+			print("Saved: ", link)
+			time.sleep(DEFAULT_DELAY)
+
+			logging.info(f"Saved: {link}")
+			return
+		except save.BlockedByRobots as exc:
+			logging.critical(f"Error{errors} Skipping blocked by robots: {link}, {exc}")
+			# should not save in this case
+
+			time.sleep(BLOCKED_BY_ROBOTS_DELAY)
+
+			return
+		except Exception as exc:
+			errors += 1
+			logger.error(f"Error{errors}: {link}, {exc}")
+			time.sleep(TOOMANYREQUESTS_DELAY)
+
 def add_link(url_original: str) -> str | None:
 	last_url = None
 
@@ -450,53 +472,22 @@ def add_link(url_original: str) -> str | None:
 	link = make_link(url)
 
 	while link.url:
-		errors = 0
-		while True:
-			try:
-				print("Start Saving")
-				logger.info("Start Saving")
-				save.capture(
-					link.url,
-					user_agent="mr.awesome10000@gmail.com using savepagenow",
-					accept_cache=True
-				)
-
-				print("Saved: ", link)
-				time.sleep(DEFAULT_DELAY)
-
-				logging.info(f"Saved: {link}")
-				break
-			except save.BlockedByRobots as exc:
-				logging.critical(f"Error{errors} Skipping blocked by robots: {link}, {exc}")
-				# should not save in this case
-
-				time.sleep(BLOCKED_BY_ROBOTS_DELAY)
-
-				break
-			except Exception as exc:
-				errors += 1
-				logger.error(f"Error{errors}: {link}, {exc}")
-				time.sleep(TOOMANYREQUESTS_DELAY)
-
-		#if link.is_updatatable():
-		#	last_url = url
-		#else:
-		#	last_url = url_original.strip()
+		save_url(link)
 		last_url = pick_url_to_save(link, url_original)
-
 		link = attempt_get_next(link)
 
 	return last_url
 
 def write_saved(lines: Sequence[str], filename: str) -> None:
-	with open(filename, "w") as save_file:
+	with open_utf8(filename, "w") as save_file:
 		save_file.write("\n".join(lines))
 
 def append_update_extras(url: str, filename: str="update_extras.txt") -> None:
-	with open(filename, "a") as file:
-		file.write(url + "\n")
+	if SAVE:
+		with open_utf8(filename, "a") as file:
+			file.write(url + "\n")
 
-def save_url_list(urls: list[str], saved: Saved, save_to_new: bool) -> None:
+def save_url_list(urls: Sequence[str], saved: Saved, save_to_new: bool) -> None:
 	url_queue: deque[str] = deque()
 	url_queue.extend(url.strip() for url in urls)
 	for url in urls:
@@ -512,10 +503,8 @@ def save_url_list(urls: list[str], saved: Saved, save_to_new: bool) -> None:
 		if SAVE and save_to_new:
 			write_saved(url_queue, NEW_URLS)
 
-
 def comp_format(url: str) -> str:
 	return make_link(url).comp_format()
-
 
 def save_format(url: str | None) -> str | None:
 	"""Format the url to be saved in the save file"""
@@ -529,7 +518,6 @@ def save_format(url: str | None) -> str | None:
 			url = url.rsplit("/", 1)[0]
 		return url
 	return url.strip("?view_adult=true")
-
 
 HELP = """Usage: python3 savetowayback.py [-uf] [URLS]...
 	Save webpages to the wayback machine.
@@ -557,7 +545,7 @@ def main() -> None:
 
 		if "-f" in sys.argv:
 			given.remove("-f")
-			with open(NEW_URLS, "r") as file:
+			with open_utf8(NEW_URLS, "r") as file:
 				urls = file.readlines()
 			save_url_list(urls, saved, save_to_new=True)
 
@@ -581,4 +569,3 @@ def main() -> None:
 if __name__ == "__main__":
 	logging.info("Starting")
 	main()
-
