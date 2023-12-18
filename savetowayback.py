@@ -49,9 +49,8 @@ AO3_URL = "https://archiveofourown.org/"
 # https://imhentai.xxx/gallery/905223/
 
 
-class File(Protocol):
-	def readlines(self) -> list[str]:
-		...
+#class File(Protocol):
+#	def readlines(self) -> list[str]: ...
 
 
 def setup_logger(name: str, log_file: str, level: int=logging.INFO) -> logging.Logger:
@@ -71,8 +70,48 @@ logger = setup_logger("first_logger", LOG_FILE)
 
 
 class Saved:
-	def __init__(self):
-		self.lines: list[str] = []
+	def __init__(self, file: str):
+		self.filename = file
+		self.lines: list[str] = self.read_saved()
+
+
+	def read_saved(self) -> list[str]:
+		with open(self.filename, "r") as save_file:
+			return list(line.strip() for line in save_file.readlines())
+
+	def is_saved(self, url: str) -> bool:
+		formatted = comp_format(url)
+		if url in self.lines or formatted in self.lines:
+			return True
+
+		# TODO: caching
+		cutoff_page = [comp_format(line) for line in self.lines]
+
+		if formatted in cutoff_page:
+			return True
+		return False
+
+	def add(self, item: str) -> None:
+		self.lines.append(item)
+	
+	def clear_dupes(self) -> None:
+		self.lines = list(set(self.lines))
+
+	def save(self) -> None:
+		if SAVE:
+			write_saved(self.lines, self.filename)
+			logger.info("Saving")
+
+	def update_old(self) -> None:
+		for index, preurl in enumerate(self.lines):
+			url = preurl.strip()
+			if not make_link(url).is_updatatable():
+				continue
+			last = add_link(url)
+			if not last:
+				continue
+			self.lines[index] = last
+			self.save()
 
 
 class WebsiteLink:
@@ -96,7 +135,7 @@ class WebsiteLink:
 	def comp_format(self) -> str:
 		return self.url.strip().strip("/")
 
-	def __repr__(self):
+	def __repr__(self) -> str:
 		return f"Link({self.url})"
 
 class AO3Link(WebsiteLink):
@@ -449,16 +488,6 @@ def add_link(url_original: str) -> str | None:
 
 	return last_url
 
-def read_saved(file: File | None = None) -> list[str]:
-	if not hasattr(read_saved, "lines"):
-		if file is None:
-			with open(SAVED_URLS, "r") as save_file:
-				lines = list(line.strip() for line in save_file.readlines())
-		else:
-			lines = list(line.strip() for line in file.readlines())
-		read_saved.lines = lines
-	return read_saved.lines
-
 def write_saved(lines: Sequence[str], filename: str) -> None:
 	with open(filename, "w") as save_file:
 		save_file.write("\n".join(lines))
@@ -467,52 +496,21 @@ def append_update_extras(url: str, filename: str="update_extras.txt") -> None:
 	with open(filename, "a") as file:
 		file.write(url + "\n")
 
-def is_saved(url: str, lines: Sequence[str] | None = None) -> bool:
-	if lines is None:
-		lines = read_saved()
-	formatted = comp_format(url)
-	if url in lines or formatted in lines:
-		return True
-
-	# TODO: caching
-	cutoff_page = [comp_format(line) for line in lines]
-
-	if formatted in cutoff_page:
-		return True
-	return False
-
-
-def update_old(lines: list[str]) -> None:
-	for index, preurl in enumerate(list(lines)):
-		url = preurl.strip()
-		if not make_link(url).is_updatatable():
-			continue
-		last = add_link(url)
-		if not last:
-			continue
-		lines[index] = last
-		if SAVE:
-			write_saved(lines, SAVED_URLS)
-			logger.info("Saving")
-
-
-def save_url_list(urls: list[str], lines: list[str], save_to_new: bool) -> None:
+def save_url_list(urls: list[str], saved: Saved, save_to_new: bool) -> None:
 	url_queue: deque[str] = deque()
 	url_queue.extend(url.strip() for url in urls)
 	for url in urls:
-		if is_saved(url):
+		if saved.is_saved(url):
 			url_queue.popleft()
 			continue
 		last = save_format(add_link(url))
 		if last:
-			lines.append(last)
+			saved.add(last)
 			logger.debug(f"appending {last} to lines")
 		url_queue.popleft()
-		if SAVE:
-			write_saved(lines, SAVED_URLS)
-			if save_to_new:
-				write_saved(url_queue, NEW_URLS)
-			logger.info("Saving")
+		saved.save()
+		if SAVE and save_to_new:
+			write_saved(url_queue, NEW_URLS)
 
 
 def comp_format(url: str) -> str:
@@ -544,7 +542,7 @@ HELP = """Usage: python3 savetowayback.py [-uf] [URLS]...
 """
 
 def main() -> None:
-	lines = read_saved()
+	saved = Saved(SAVED_URLS)
 
 	if "--help" in sys.argv:
 		print(HELP)
@@ -552,28 +550,24 @@ def main() -> None:
 
 	try:
 		given = sys.argv[1:]
-		todo_file = NEW_URLS
-		save_file = SAVED_URLS
 
 		if "-u" in sys.argv:
-			update_old(lines)
+			saved.update_old()
 			given.remove("-u")
 
 		if "-f" in sys.argv:
 			given.remove("-f")
 			with open(NEW_URLS, "r") as file:
 				urls = file.readlines()
-			save_url_list(urls, lines, save_to_new=True)
+			save_url_list(urls, saved, save_to_new=True)
 
-		save_url_list(given, lines, save_to_new=False)
+		save_url_list(given, saved, save_to_new=False)
 
-		lines = list(set(lines))
+		saved.clear_dupes()
 	except BaseException as exc:
 		if isinstance(exc, KeyboardInterrupt):
 			log_message = "KeyboardInterrupt"
 		else:
-			todo_file = "urls_unfinished.txt"
-			save_file = "save_dump.txt"
 			log_message = "Uncaught Fatal Exception"
 
 		logger.critical(log_message)
