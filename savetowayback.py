@@ -527,7 +527,7 @@ HELP = """Usage: python3 savetowayback.py [-uf] [URLS]...
 	  -f        look in "new_urls.txt" for a list of urls to save
 """
 
-def parse_args_and_save(saved: Saved):
+def parse_args_and_save(saved: Saved) -> None:
 	given = sys.argv[1:]
 
 	if "-u" in sys.argv:
