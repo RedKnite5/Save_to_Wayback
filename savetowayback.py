@@ -105,9 +105,11 @@ class Saved:
 		self.lines = list(set(self.lines))
 
 	def save(self) -> None:
-		if SAVE:
-			write_saved(self.lines, self.filename)
-			logger.info("Saving")
+		if not SAVE:
+			return
+		self.clear_dupes()
+		write_saved(self.lines, self.filename)
+		logger.info("Saving")
 
 	def update_old(self) -> None:
 		for index, preurl in enumerate(self.lines):
@@ -525,6 +527,21 @@ HELP = """Usage: python3 savetowayback.py [-uf] [URLS]...
 	  -f        look in "new_urls.txt" for a list of urls to save
 """
 
+def parse_args_and_save(saved: Saved):
+	given = sys.argv[1:]
+
+	if "-u" in sys.argv:
+		saved.update_old()
+		given.remove("-u")
+
+	if "-f" in sys.argv:
+		given.remove("-f")
+		with open_utf8(NEW_URLS, "r") as file:
+			urls = file.readlines()
+		save_url_list(urls, saved, save_to_new=True)
+
+	save_url_list(given, saved, save_to_new=False)
+
 def main() -> None:
 	saved = Saved(SAVED_URLS)
 
@@ -533,29 +550,12 @@ def main() -> None:
 		return
 
 	try:
-		given = sys.argv[1:]
-
-		if "-u" in sys.argv:
-			saved.update_old()
-			given.remove("-u")
-
-		if "-f" in sys.argv:
-			given.remove("-f")
-			with open_utf8(NEW_URLS, "r") as file:
-				urls = file.readlines()
-			save_url_list(urls, saved, save_to_new=True)
-
-		save_url_list(given, saved, save_to_new=False)
-
-		saved.clear_dupes()
+		parse_args_and_save(saved)
 	except BaseException as exc:
+		log_message = "Uncaught Fatal Exception"
 		if isinstance(exc, KeyboardInterrupt):
 			log_message = "KeyboardInterrupt"
-		else:
-			log_message = "Uncaught Fatal Exception"
-
 		logger.critical(log_message)
-
 		raise
 	finally:
 		logger.info("Stopping")
