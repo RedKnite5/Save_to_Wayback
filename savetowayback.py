@@ -126,6 +126,8 @@ def get_elements(url: str, func: TagIdentifier) -> list[bs4.element.Tag]:
 	return soup.find_all(func)
 
 class WebsiteLink:
+	URL_PRFIX: str = ""
+
 	def __init__(self, url: str):
 		self.url: str = url
 
@@ -144,81 +146,52 @@ class WebsiteLink:
 		return True
 
 	def comp_format(self) -> str:
-		return self.url.strip().strip("/")
+		return self.url.strip(" /")
 
 	def __repr__(self) -> str:
 		return f"Link({self.url})"
 
-class RRLink(WebsiteLink):
+class XenForoLink(WebsiteLink):
 	@staticmethod
 	def check_btn(tag: bs4.element.Tag) -> bool:
-		if tag.name == "a" and tag.text == "Next Chapter":
-			return True
-		return False
+		if tag.get("class") != ["pageNav-jump", "pageNav-jump--next"]:
+			return False
+		if tag.text != "Next" or tag.name != "a":
+			return False
+		return True
 
 	def get_next(self) -> str:
 		btns = get_elements(self.url, self.check_btn)
-		if btns:
-			self.url = urljoin(RR_URL, btns[0].attrs["href"])
-			return self.url
+		if (len(btns) < 2
+			or btns[0].attrs.get("href") != btns[1].attrs.get("href")):
 
-		self.url = ""  # should never get here
-		return self.url
-
-class AO3Link(WebsiteLink):
-	#def __init__(self, url: str):
-	#	super().__init__(url)
-		#self.prep_ao3_url()
-
-	@staticmethod
-	def check_btn(tag: bs4.element.Tag) -> bool:
-		if tag.name == "a" and tag.text == "Next Chapter →":
-			return True
-		return False
-
-	def get_next(self) -> str:
-		if self.url.endswith("view_full_work=true"):
 			self.url = ""
 			return self.url
 
-		# if current version is normal, next is adult version
-		# otherwise next is next chapter or empty string
-		if not self.url.strip("/").endswith("?view_adult=true"):
-			self.url = self.url.strip("/") + "?view_adult=true"
-			return self.url
-
-		btns = get_elements(self.url, self.check_btn)
-
-		if btns:
-			next_url = urljoin(AO3_URL, btns[0].attrs["href"])
-			self.url = cut_end(next_url, "#workskin")
-			return self.url
-
-		if "/chapters/" in self.url:
-			base = self.url.split("/chapters/")[0]
-			add_link(base + "?view_full_work=true")
-			add_link(base + "?view_adult=true&view_full_work=true")
-
-		self.url = ""
+		self.url = urljoin(self.URL_PRFIX, btns[0].attrs["href"])
 		return self.url
 
-	def prep_ao3_url(self) -> None:
-		if not self.url.startswith(AO3_URL):
-			raise ValueError(f"Not AO3 url: {self.url}")
-
-		if self.url.endswith("#workskin"):
-			self.url = self.url[:-9]
-		if not self.url.endswith("?view_adult=true"):
-			self.url = self.url + "?view_adult=true"
-		# if view adult is not added then the actual content of the chapter
-		# is not saved. Saving both may be better, but only saving the
-		# adult version seems to work. This is less helpful in non-adult
-		# stories.
-
 	def comp_format(self) -> str:
-		return cut_end(self.url.strip(), "?view_adult=true").split("chapters")[0]
+		return self.url.strip().split("/page-")[0].strip("/")
+
+class SBLink(XenForoLink):
+	URL_PRFIX = SB_URL
+
+class SVLink(XenForoLink):
+	URL_PRFIX = SV_URL
+
+class QQLink(XenForoLink):
+	URL_PRFIX = QQ_URL
+	@staticmethod
+	def check_btn(tag: bs4.element.Tag) -> bool:
+		if (tag.name == "a"
+			and tag.get("class") == ["text"]
+			and tag.text == "Next >"):
+			return True
+		return False
 
 class FFLink(WebsiteLink):
+	URL_PRFIX = FF_URL
 	@staticmethod
 	def check_btn(tag: bs4.element.Tag) -> bool:
 		if tag.get("class") == ["btn"] and tag.text == "Next >":
@@ -237,76 +210,14 @@ class FFLink(WebsiteLink):
 
 		url_end = btns[0]["onclick"][15:][:-1]
 		if isinstance(url_end, str):
-			self.url = urljoin(FF_URL, url_end)
+			self.url = urljoin(self.URL_PRFIX, url_end)
 			return self.url
 
 		self.url = ""  # should never get here
 		return self.url
 
-class SBLink(WebsiteLink):
-	@staticmethod
-	def check_btn(tag: bs4.element.Tag) -> bool:
-		if tag.get("class") != ["pageNav-jump", "pageNav-jump--next"]:
-			return False
-		if tag.text != "Next" or tag.name != "a":
-			return False
-		return True
-
-	def get_next(self) -> str:
-		btns = get_elements(self.url, self.check_btn)
-		if (len(btns) < 2
-	  		or btns[0].attrs.get("href") != btns[1].attrs.get("href")):
-
-			self.url = ""
-			return self.url
-
-		self.url =  urljoin(SB_URL, btns[0].attrs["href"])
-		return self.url
-
-	def comp_format(self) -> str:
-		return self.url.strip().split("/page-")[0].strip("/")
-
-class SVLink(WebsiteLink):
-	def get_next(self) -> str:
-		btns = get_elements(self.url, SBLink.check_btn)
-
-		if (len(btns) < 2
-	  		or btns[0].attrs.get("href") != btns[1].attrs.get("href")):
-
-			self.url = ""
-			return self.url
-
-		self.url =  urljoin(SV_URL, btns[0].attrs["href"])
-		return self.url
-
-	def comp_format(self) -> str:
-		return self.url.strip().split("/page-")[0].strip("/")
-
-class QQLink(WebsiteLink):
-	@staticmethod
-	def check_btn(tag: bs4.element.Tag) -> bool:
-		if (tag.name == "a"
-			and tag.get("class") == ["text"]
-			and tag.text == "Next >"):
-			return True
-		return False
-
-	def get_next(self) -> str:
-		btns = get_elements(self.url, self.check_btn)
-
-		if (len(btns) < 2
-	  		or btns[0].attrs.get("href") != btns[1].attrs.get("href")):
-
-			self.url = ""
-			return self.url
-
-		self.url =  urljoin(QQ_URL, btns[0].attrs["href"])
-		return self.url
-
-	def comp_format(self) -> str:
-		return self.url.strip().split("/page-")[0].strip("/")
-
 class NHLink(WebsiteLink):
+	URL_PRFIX = NH_URL
 	@staticmethod
 	def check_nh(tag: bs4.element.Tag) -> bool:
 		if "404 – Not Found" in tag.text:
@@ -340,9 +251,10 @@ class NHLink(WebsiteLink):
 		return self.url
 
 	def comp_format(self) -> str:
-		return NH_URL + self.url.strip()[len(NH_URL):].split("/")[0]
+		return self.URL_PRFIX + self.url.strip()[len(self.URL_PRFIX):].split("/")[0]
 
 class IMHLink(WebsiteLink):
+	URL_PRFIX = IMH_URL
 	@staticmethod
 	def make_imh_checker(pages: int) -> Callable[[bs4.element.Tag], bool]:
 		def check_imh(tag: bs4.element.Tag) -> bool:
@@ -417,19 +329,90 @@ class IMHLink(WebsiteLink):
 			url = url.rsplit("/", 1)[0]
 		return url
 
+class AO3Link(WebsiteLink):
+	URL_PRFIX = AO3_URL
+	#def __init__(self, url: str):
+	#	super().__init__(url)
+		#self.prep_ao3_url()
+
+	@staticmethod
+	def check_btn(tag: bs4.element.Tag) -> bool:
+		if tag.name == "a" and tag.text == "Next Chapter →":
+			return True
+		return False
+
+	def get_next(self) -> str:
+		if self.url.endswith("view_full_work=true"):
+			self.url = ""
+			return self.url
+
+		# if current version is normal, next is adult version
+		# otherwise next is next chapter or empty string
+		if not self.url.strip("/").endswith("?view_adult=true"):
+			self.url = self.url.strip("/") + "?view_adult=true"
+			return self.url
+
+		btns = get_elements(self.url, self.check_btn)
+
+		if btns:
+			next_url = urljoin(AO3_URL, btns[0].attrs["href"])
+			self.url = cut_end(next_url, "#workskin")
+			return self.url
+
+		if "/chapters/" in self.url:
+			base = self.url.split("/chapters/")[0]
+			add_link(base + "?view_full_work=true")
+			add_link(base + "?view_adult=true&view_full_work=true")
+
+		self.url = ""
+		return self.url
+
+	def prep_ao3_url(self) -> None:
+		if not self.url.startswith(AO3_URL):
+			raise ValueError(f"Not AO3 url: {self.url}")
+
+		if self.url.endswith("#workskin"):
+			self.url = self.url[:-9]
+		if not self.url.endswith("?view_adult=true"):
+			self.url = self.url + "?view_adult=true"
+		# if view adult is not added then the actual content of the chapter
+		# is not saved. Saving both may be better, but only saving the
+		# adult version seems to work. This is less helpful in non-adult
+		# stories.
+
+	def comp_format(self) -> str:
+		return cut_end(self.url.strip(), "?view_adult=true").split("chapters")[0]
+
+class RRLink(WebsiteLink):
+	URL_PRFIX = RR_URL
+	@staticmethod
+	def check_btn(tag: bs4.element.Tag) -> bool:
+		if tag.name == "a" and tag.text == "Next Chapter":
+			return True
+		return False
+
+	def get_next(self) -> str:
+		btns = get_elements(self.url, self.check_btn)
+		if btns:
+			self.url = urljoin(RR_URL, btns[0].attrs["href"])
+			return self.url
+
+		self.url = ""  # should never get here
+		return self.url
+
 def make_link(url: str) -> WebsiteLink:
-	string_class_pairing = (
-		(FF_URL, FFLink),
-		(SB_URL, SBLink),
-		(SV_URL, SVLink),
-		(QQ_URL, QQLink),
-		(NH_URL, NHLink),
-		(IMH_URL, IMHLink),
-		(AO3_URL, AO3Link),
-		(RR_URL, RRLink),
+	link_classes = (
+		FFLink,
+		SBLink,
+		SVLink,
+		QQLink,
+		NHLink,
+		IMHLink,
+		AO3Link,
+		RRLink,
 	)
-	for url_start, link_class in string_class_pairing:
-		if url.startswith(url_start):
+	for link_class in link_classes:
+		if url.startswith(link_class.URL_PRFIX):
 			return link_class(url)
 	return WebsiteLink(url)
 
@@ -477,15 +460,14 @@ def save_url(link: WebsiteLink) -> None:
 			logger.error(f"Error{errors}: {link}, {exc}")
 			time.sleep(TOOMANYREQUESTS_DELAY)
 
-def add_link(url_original: str) -> str | None:
+def add_link(url: str) -> str | None:
 	last_url = None
 
-	url = url_original.strip()
-	link = make_link(url)
+	link = make_link(url.strip())
 
 	while link.url:
 		save_url(link)
-		last_url = pick_url_to_save(link, url_original)
+		last_url = pick_url_to_save(link, url)
 		link = attempt_get_next(link)
 
 	return last_url
@@ -501,17 +483,15 @@ def append_update_extras(url: str, filename: str="update_extras.txt") -> None:
 		file.write(url + "\n")
 
 def save_url_list(urls: Sequence[str], saved: Saved, save_to_new: bool) -> None:
-	url_queue: deque[str] = deque()
-	url_queue.extend(url.strip() for url in urls)
+	url_queue = deque(url.strip() for url in urls)
 	for url in urls:
+		url_queue.popleft()
 		if saved.is_saved(url):
-			url_queue.popleft()
 			continue
 		last = save_format(add_link(url))
 		if last:
 			saved.add(last)
 			logger.debug(f"appending {last} to lines")
-		url_queue.popleft()
 		saved.save()
 		if SAVE and save_to_new:
 			write_saved(url_queue, NEW_URLS)
