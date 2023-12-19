@@ -102,7 +102,9 @@ class Saved:
 		self.lines.append(item)
 
 	def clear_dupes(self) -> None:
-		self.lines = list(set(self.lines))
+		seen = set()
+		seen_add = seen.add
+		self.lines = [x for x in self.lines if not (x in seen or seen_add(x))]
 
 	def save(self) -> None:
 		if not SAVE:
