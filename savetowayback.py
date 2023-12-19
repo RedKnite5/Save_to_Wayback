@@ -4,6 +4,8 @@
 # used DEC/13/22
 # used APR/26/23
 
+from __future__ import annotations
+
 import logging
 import sys
 import time
@@ -102,7 +104,7 @@ class Saved:
 		self.lines.append(item)
 
 	def clear_dupes(self) -> None:
-		seen = set()
+		seen: set[str] = set()
 		seen_add = seen.add
 		self.lines = [x for x in self.lines if not (x in seen or seen_add(x))]
 
@@ -154,6 +156,16 @@ class WebsiteLink:
 
 	def __repr__(self) -> str:
 		return f"Link({self.url})"
+
+	def attempt_get_next(self) -> WebsiteLink:
+		for i in range(10):  # try 10 times
+			try:
+				self.get_next()
+				return self
+			except requests.exceptions.ConnectionError as exc:
+				logger.error(f"Error {i+1} getting: {self.url}, {exc}")
+				time.sleep(1)
+		return WebsiteLink("")
 
 class XenForoLink(WebsiteLink):
 	@staticmethod
@@ -425,16 +437,6 @@ def pick_url_to_save(link: WebsiteLink, url_original: str) -> str:
 		return link.url
 	return url_original.strip()
 
-def attempt_get_next(link: WebsiteLink) -> WebsiteLink:
-	for i in range(10):  # try 10 times
-		try:
-			link.get_next()
-			return link
-		except requests.exceptions.ConnectionError as exc:
-			logger.error(f"Error {i+1} getting: {link.url}, {exc}")
-			time.sleep(1)
-	return WebsiteLink("")
-
 def capture_with_logging(link: WebsiteLink) -> None:
 	print("Start Saving")
 	logger.info("Start Saving")
@@ -472,7 +474,7 @@ def add_link(url: str) -> str | None:
 	while link.url:
 		save_url(link)
 		last_url = pick_url_to_save(link, url)
-		link = attempt_get_next(link)
+		link = link.attempt_get_next()
 
 	return last_url
 
