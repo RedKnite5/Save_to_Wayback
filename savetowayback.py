@@ -55,24 +55,25 @@ TagIdentifier = Callable[[bs4.element.Tag], bool]
 
 open_utf8 = partial(open, encoding="utf-8")
 
-def setup_logger(
-		name: str,
-		log_file: str,
-		level: int=logging.INFO
-		) -> logging.Logger:
+def setup_loggers() -> logging.Logger:
 	"""To setup as many loggers as you want"""
 
-	handler = logging.FileHandler(log_file)
+	LOG_FILE = "urls_saved.log"
 
-	log = logging.getLogger(name)
-	log.setLevel(level)
-	log.addHandler(handler)
+	stderr_handler = logging.StreamHandler()
+	file_handler = logging.FileHandler(LOG_FILE)
 
-	return log
+	stderr_log = logging.getLogger("stderr_logger")
+	file_log = logging.getLogger("stderr_logger.file_logger")
+	stderr_log.setLevel(logging.INFO)
+	file_log.setLevel(logging.DEBUG)
+	stderr_log.addHandler(stderr_handler)
+	file_log.addHandler(file_handler)
+
+	return file_log
 
 
-LOG_FILE = "urls_saved.log"
-logger = setup_logger("first_logger", LOG_FILE)
+logger = setup_loggers()
 
 def cut_end(string: str, ending: str) -> str:
 	if string.endswith(ending):
@@ -163,8 +164,9 @@ class WebsiteLink:
 				self.get_next()
 				return self
 			except requests.exceptions.ConnectionError as exc:
-				logger.error(f"Error {i+1} getting: {self.url}, {exc}")
+				logger.warning(f"Error {i+1} getting next: {self.url}, {exc}")
 				time.sleep(1)
+		logger.error(f"Error could not get next from: {self.url}. Skipping")
 		return WebsiteLink("")
 
 class XenForoLink(WebsiteLink):
@@ -438,16 +440,13 @@ def pick_url_to_save(link: WebsiteLink, url_original: str) -> str:
 	return url_original.strip()
 
 def capture_with_logging(link: WebsiteLink) -> None:
-	print("Start Saving")
-	logger.info("Start Saving")
+	logger.debug("Start Saving")
 	save.capture(
 		link.url,
 		user_agent="mr.awesome10000@gmail.com using savepagenow",
 		accept_cache=True
 	)
-
-	print("Saved: ", link)
-	logging.info(f"Saved: {link}")
+	logger.info(f"Saved: {link}")
 
 def save_url(link: WebsiteLink) -> None:
 	errors = 0
@@ -457,13 +456,13 @@ def save_url(link: WebsiteLink) -> None:
 			time.sleep(DEFAULT_DELAY)
 			return
 		except save.BlockedByRobots as exc:
-			logging.critical(f"Error{errors} Skipping blocked by robots: {link}, {exc}")
+			logger.error(f"Error {errors} Skipping blocked by robots: {link}, {exc}")
 			# should not save in this case
 			time.sleep(BLOCKED_BY_ROBOTS_DELAY)
 			return
 		except Exception as exc:
 			errors += 1
-			logger.error(f"Error{errors}: {link}, {exc}")
+			logger.warning(f"Error {errors}: {link}, {exc}")
 			time.sleep(TOOMANYREQUESTS_DELAY)
 
 def add_link(url: str) -> str | None:
@@ -546,6 +545,12 @@ def parse_args_and_save(saved: Saved) -> None:
 
 	save_url_list(given, saved, save_to_new=False)
 
+def pick_exit_log_message(exc: BaseException) -> str:
+	if isinstance(exc, KeyboardInterrupt):
+		return "KeyboardInterrupt"
+	logger.critical(exc)
+	return "Uncaught Fatal Exception"
+
 def main() -> None:
 	saved = Saved(SAVED_URLS)
 
@@ -556,9 +561,7 @@ def main() -> None:
 	try:
 		parse_args_and_save(saved)
 	except BaseException as exc:
-		log_message = "Uncaught Fatal Exception"
-		if isinstance(exc, KeyboardInterrupt):
-			log_message = "KeyboardInterrupt"
+		log_message = pick_exit_log_message(exc)
 		logger.critical(log_message)
 		raise
 	finally:
@@ -566,5 +569,5 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-	logging.info("Starting")
+	logger.info("Starting")
 	main()
