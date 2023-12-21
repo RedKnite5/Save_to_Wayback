@@ -3,6 +3,7 @@
 # used 12/20/21
 # used DEC/13/22
 # used APR/26/23
+# used DEC/19/23
 
 from __future__ import annotations
 
@@ -58,15 +59,23 @@ open_utf8 = partial(open, encoding="utf-8")
 def setup_loggers() -> logging.Logger:
 	"""To setup as many loggers as you want"""
 
-	LOG_FILE = "urls_saved.log"
+	log_file = "urls_saved.log"
+
+	FORMAT = "%(asctime)s %(message)s"
+	formatter = logging.Formatter(FORMAT)
 
 	stderr_handler = logging.StreamHandler()
-	file_handler = logging.FileHandler(LOG_FILE)
+	file_handler = logging.FileHandler(log_file)
+
+	stderr_handler.setFormatter(formatter)
+	file_handler.setFormatter(formatter)
 
 	stderr_log = logging.getLogger("stderr_logger")
 	file_log = logging.getLogger("stderr_logger.file_logger")
 	stderr_log.setLevel(logging.INFO)
+	stderr_handler.setLevel(logging.INFO)
 	file_log.setLevel(logging.DEBUG)
+	file_handler.setLevel(logging.DEBUG)
 	stderr_log.addHandler(stderr_handler)
 	file_log.addHandler(file_handler)
 
@@ -114,7 +123,7 @@ class Saved:
 			return
 		self.clear_dupes()
 		write_saved(self.lines, self.filename)
-		logger.info("Saving")
+		logger.info("Recording")
 
 	def update_old(self) -> None:
 		for index, preurl in enumerate(self.lines):
@@ -133,6 +142,7 @@ def get_elements(url: str, func: TagIdentifier) -> list[bs4.element.Tag]:
 	return soup.find_all(func)
 
 class WebsiteLink:
+	"""Base class for links to all websites"""
 	URL_PRFIX: str = ""
 
 	def __init__(self, url: str):
@@ -142,21 +152,16 @@ class WebsiteLink:
 		return None
 
 	def is_updatatable(self) -> bool:
-		#not_updatable = [
-		#	NH_URL,
-		#	IMH_URL
-		#]
-
-		#for start in not_updatable:
-		#	if url.startswith(start):
-		#		return False
-		return True
+		return False
 
 	def comp_format(self) -> str:
 		return self.url.strip(" /")
 
+	def __str__(self) -> str:
+		return self.url
+
 	def __repr__(self) -> str:
-		return f"Link({self.url})"
+		return f"Link(\"{self.url}\")"
 
 	def attempt_get_next(self) -> WebsiteLink:
 		for i in range(10):  # try 10 times
@@ -192,6 +197,9 @@ class XenForoLink(WebsiteLink):
 	def comp_format(self) -> str:
 		return self.url.strip().split("/page-")[0].strip("/")
 
+	def is_updatatable(self) -> bool:
+		return True
+
 class SBLink(XenForoLink):
 	URL_PRFIX = SB_URL
 
@@ -216,9 +224,6 @@ class FFLink(WebsiteLink):
 			return True
 		return False
 
-	def is_updatatable(self) -> bool:
-		return False  # not updatable because blocked
-
 	def get_next(self) -> str:
 		btns = get_elements(self.url, self.check_btn)
 		if len(btns) < 2 or btns[0].get("onclick") != btns[1].get("onclick"):
@@ -240,9 +245,6 @@ class NHLink(WebsiteLink):
 	def check_nh(tag: bs4.element.Tag) -> bool:
 		if "404 – Not Found" in tag.text:
 			return True
-		return False
-
-	def is_updatatable(self) -> bool:
 		return False
 
 	def make_new_url(self, url: str) -> str:
@@ -286,9 +288,6 @@ class IMHLink(WebsiteLink):
 				return False
 		return check_imh
 
-	def is_updatatable(self) -> bool:
-		return False
-
 	@staticmethod
 	def total_pages_imh(tag: bs4.element.Tag) -> bool:
 		try:
@@ -308,6 +307,17 @@ class IMHLink(WebsiteLink):
 		parts[-2] = str(int(parts[-2]) + 1)
 		return "/".join(parts)
 
+	def get_total_pages(self, url: str) -> tuple[int, bool]:
+		page = requests.get(url, timeout=120)
+		soup = bs4.BeautifulSoup(page.text, "html.parser")
+		total_page_tag = soup.find(self.total_pages_imh)
+		if total_page_tag is None:
+			return 0, True
+
+		pages = int(total_page_tag.text)
+		is_last_page = bool(soup.find_all(self.make_imh_checker(pages)))
+		return pages, is_last_page
+
 	def get_next(self) -> str:
 		logger.debug(f"Getting next imh style url from {self.url}")
 
@@ -319,24 +329,22 @@ class IMHLink(WebsiteLink):
 
 		new_url = self.make_new_url(url)
 
-		page = requests.get(new_url, timeout=120)
-		soup = bs4.BeautifulSoup(page.text, "html.parser")
-		total_page_tag = soup.find(self.total_pages_imh)
+		pages, is_last_page = self.get_total_pages(new_url)
 
-		if total_page_tag is None:
+		if not pages:
 			# should not write to saved file in this case
 			# currently does
 			append_update_extras(new_url)
 			logger.error(f"new redirecting url: {new_url}")
 			self.url = ""
 			return self.url
-		pages = int(total_page_tag.text)
 
 		logger.debug(f"imh total page count is {pages}")
 
-		if soup.find_all(self.make_imh_checker(pages)):
+		if is_last_page:
 			self.url = ""
 			return self.url
+
 		self.url = new_url
 		return self.url
 
@@ -349,9 +357,6 @@ class IMHLink(WebsiteLink):
 
 class AO3Link(WebsiteLink):
 	URL_PRFIX = AO3_URL
-	#def __init__(self, url: str):
-	#	super().__init__(url)
-		#self.prep_ao3_url()
 
 	@staticmethod
 	def check_btn(tag: bs4.element.Tag) -> bool:
@@ -359,10 +364,22 @@ class AO3Link(WebsiteLink):
 			return True
 		return False
 
+	def save_full_work(self) -> None:
+		if "/chapters/" not in self.url:
+			return
+		base = self.url.split("/chapters/")[0]
+		add_link(base + "?view_full_work=true")
+		add_link(base + "?view_adult=true&view_full_work=true")
+
 	def get_next(self) -> str:
 		if self.url.endswith("view_full_work=true"):
 			self.url = ""
 			return self.url
+
+		# if view adult is not added then the actual content of the chapter
+		# is not saved. Saving both may be better, but only saving the
+		# adult version seems to work. This is less helpful in non-adult
+		# stories.
 
 		# if current version is normal, next is adult version
 		# otherwise next is next chapter or empty string
@@ -371,35 +388,22 @@ class AO3Link(WebsiteLink):
 			return self.url
 
 		btns = get_elements(self.url, self.check_btn)
-
+		# may fail if work is restricted
 		if btns:
 			next_url = urljoin(AO3_URL, btns[0].attrs["href"])
 			self.url = cut_end(next_url, "#workskin")
 			return self.url
 
-		if "/chapters/" in self.url:
-			base = self.url.split("/chapters/")[0]
-			add_link(base + "?view_full_work=true")
-			add_link(base + "?view_adult=true&view_full_work=true")
+		self.save_full_work()
 
 		self.url = ""
 		return self.url
 
-	def prep_ao3_url(self) -> None:
-		if not self.url.startswith(AO3_URL):
-			raise ValueError(f"Not AO3 url: {self.url}")
-
-		if self.url.endswith("#workskin"):
-			self.url = self.url[:-9]
-		if not self.url.endswith("?view_adult=true"):
-			self.url = self.url + "?view_adult=true"
-		# if view adult is not added then the actual content of the chapter
-		# is not saved. Saving both may be better, but only saving the
-		# adult version seems to work. This is less helpful in non-adult
-		# stories.
-
 	def comp_format(self) -> str:
 		return cut_end(self.url.strip(), "?view_adult=true").split("chapters")[0]
+
+	def is_updatatable(self) -> bool:
+		return True
 
 class RRLink(WebsiteLink):
 	URL_PRFIX = RR_URL
@@ -417,6 +421,9 @@ class RRLink(WebsiteLink):
 
 		self.url = ""  # should never get here
 		return self.url
+
+	def is_updatatable(self) -> bool:
+		return True
 
 def make_link(url: str) -> WebsiteLink:
 	link_classes = (
@@ -443,10 +450,13 @@ def capture_with_logging(link: WebsiteLink) -> None:
 	logger.debug("Start Saving")
 	save.capture(
 		link.url,
-		user_agent="mr.awesome10000@gmail.com using savepagenow",
+		user_agent="mr.Awesome10000@gmail.com using savepagenow python",
 		accept_cache=True
 	)
 	logger.info(f"Saved: {link}")
+
+def too_many_reqs_delay(errors: int) -> int:
+	return min(60 * 2 * 2**errors, 60*30)
 
 def save_url(link: WebsiteLink) -> None:
 	errors = 0
@@ -463,9 +473,10 @@ def save_url(link: WebsiteLink) -> None:
 		except Exception as exc:
 			errors += 1
 			logger.warning(f"Error {errors}: {link}, {exc}")
-			time.sleep(TOOMANYREQUESTS_DELAY)
+			time.sleep(too_many_reqs_delay(errors))
 
 def add_link(url: str) -> str | None:
+	logger.debug(f"add_link {url}")
 	last_url = None
 
 	link = make_link(url.strip())
@@ -492,6 +503,7 @@ def save_url_list(urls: Sequence[str], saved: Saved, save_to_new: bool) -> None:
 	for url in urls:
 		url_queue.popleft()
 		if saved.is_saved(url):
+			logger.info(f"is saved, skipping: {url}")
 			continue
 		last = save_format(add_link(url))
 		if last:
