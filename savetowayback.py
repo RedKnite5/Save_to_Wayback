@@ -14,6 +14,7 @@ from collections import deque
 from collections.abc import Callable, Sequence
 from urllib.parse import urljoin
 from functools import partial
+import signal
 
 import bs4
 import requests
@@ -23,11 +24,9 @@ import savepagenow as save
 NEW_URLS = "new_urls.txt"
 SAVED_URLS = "saved.txt"
 DEFAULT_DELAY = 30
-TOOMANYREQUESTS_DELAY = 60 * 5 + 30
 BLOCKED_BY_ROBOTS_DELAY = 120
 SAVE = True
 
-# TODO: Royal Road
 # TODO: on repeated errors check if page has already been saved
 # TODO: continue after laptop gets closed while running. may already work???
 # TODO: ff comp_format
@@ -53,6 +52,21 @@ RR_URL  = "https://www.royalroad.com/"
 # https://imhentai.xxx/gallery/905223/
 
 TagIdentifier = Callable[[bs4.element.Tag], bool]
+
+class TimeoutError(RuntimeError):
+	pass
+
+class Timeout:
+	def __init__(self, seconds=1, error_message='Timeout'):
+		self.seconds = seconds
+		self.error_message = error_message
+	def handle_timeout(self, signum, frame):
+		raise TimeoutError(self.error_message)
+	def __enter__(self):
+		signal.signal(signal.SIGALRM, self.handle_timeout)
+		signal.alarm(self.seconds)
+	def __exit__(self, type, value, traceback):
+		signal.alarm(0)
 
 open_utf8 = partial(open, encoding="utf-8")
 
@@ -87,6 +101,11 @@ logger = setup_loggers()
 def cut_end(string: str, ending: str) -> str:
 	if string.endswith(ending):
 		return string[:-len(ending)]
+	return string
+
+def ensure_endswith(string: str, suffix: str) -> str:
+	if not string.endswith(suffix):
+		return string + suffix
 	return string
 
 class Saved:
@@ -124,6 +143,13 @@ class Saved:
 		self.clear_dupes()
 		write_saved(self.lines, self.filename)
 		logger.info("Recording")
+
+	def add_last_to_saved(self, last: str | None) -> None:
+		if not last:
+			return
+		self.add(last)
+		logger.debug(f"appending {last} to lines")
+		self.save()
 
 	def update_old(self) -> None:
 		for index, preurl in enumerate(self.lines):
@@ -321,14 +347,7 @@ class IMHLink(WebsiteLink):
 	def get_next(self) -> str:
 		logger.debug(f"Getting next imh style url from {self.url}")
 
-		new_url = None
-		url = self.url
-
-		if not url.endswith("/"):
-			url += "/"
-
-		new_url = self.make_new_url(url)
-
+		new_url = self.make_new_url(ensure_endswith(self.url, "/"))
 		pages, is_last_page = self.get_total_pages(new_url)
 
 		if not pages:
@@ -448,15 +467,16 @@ def pick_url_to_save(link: WebsiteLink, url_original: str) -> str:
 
 def capture_with_logging(link: WebsiteLink) -> None:
 	logger.debug("Start Saving")
-	save.capture(
-		link.url,
-		user_agent="mr.Awesome10000@gmail.com using savepagenow python",
-		accept_cache=True
-	)
+	with Timeout(seconds=300):
+		save.capture(
+			link.url,
+			user_agent="mr.Awesome10000@gmail.com using savepagenow python",
+			accept_cache=True
+		)
 	logger.info(f"Saved: {link}")
 
 def too_many_reqs_delay(errors: int) -> int:
-	return min(60 * 2 * 2**errors, 60*30)
+	return min(60 * 2 * 2**errors, 60*60)
 
 def save_url(link: WebsiteLink) -> None:
 	errors = 0
@@ -470,9 +490,17 @@ def save_url(link: WebsiteLink) -> None:
 			# should not save in this case
 			time.sleep(BLOCKED_BY_ROBOTS_DELAY)
 			return
+		except save.exceptions.TooManyRequests as exc:
+			errors += 1
+			logger.warning(f"Error {errors}: {link}, TooManyRequests: {exc}")
+			time.sleep(too_many_reqs_delay(errors))
+		except TimeoutError as exc:
+			errors += 1
+			logger.warning(f"Error {errors}: {link}, Timeout: {exc}")
+			time.sleep(too_many_reqs_delay(errors))
 		except Exception as exc:
 			errors += 1
-			logger.warning(f"Error {errors}: {link}, {exc}")
+			logger.warning(f"Error {errors}: {link}, {type(exc)}: {exc}")
 			time.sleep(too_many_reqs_delay(errors))
 
 def add_link(url: str) -> str | None:
@@ -506,10 +534,7 @@ def save_url_list(urls: Sequence[str], saved: Saved, save_to_new: bool) -> None:
 			logger.info(f"is saved, skipping: {url}")
 			continue
 		last = save_format(add_link(url))
-		if last:
-			saved.add(last)
-			logger.debug(f"appending {last} to lines")
-		saved.save()
+		saved.add_last_to_saved(last)
 		if SAVE and save_to_new:
 			write_saved(url_queue, NEW_URLS)
 
