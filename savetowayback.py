@@ -476,7 +476,7 @@ def capture_with_logging(link: WebsiteLink) -> None:
 	logger.info(f"Saved: {link}")
 
 def too_many_reqs_delay(errors: int) -> int:
-	return min(60 * 2 * 2**errors, 60*60)
+	return min(60 * 2 * 2**errors, 4*60*60)
 
 def save_url(link: WebsiteLink) -> None:
 	errors = 0
