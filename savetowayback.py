@@ -194,7 +194,7 @@ class WebsiteLink:
 			try:
 				self.get_next()
 				return self
-			except requests.exceptions.ConnectionError as exc:
+			except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout) as exc:
 				logger.warning(f"Error {i+1} getting next: {self.url}, {exc}")
 				time.sleep(1)
 		logger.error(f"Error could not get next from: {self.url}. Skipping")
