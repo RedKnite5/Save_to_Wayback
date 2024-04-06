@@ -28,7 +28,6 @@ BLOCKED_BY_ROBOTS_DELAY = 120
 SAVE = True
 
 # TODO: on repeated errors check if page has already been saved
-# TODO: continue after laptop gets closed while running. may already work???
 # TODO: ff comp_format
 
 FF_URL  = "https://www.fanfiction.net/"
