@@ -156,10 +156,12 @@ class Saved:
 			if not make_link(url).is_updatatable():
 				continue
 			last = add_link(url)
+			logger.info(f"Updated: {url}")
 			if not last:
 				continue
 			self.lines[index] = last
 			self.save()
+			
 
 def get_elements(url: str, func: TagIdentifier) -> list[bs4.element.Tag]:
 	page = requests.get(url, timeout=60)
