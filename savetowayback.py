@@ -107,6 +107,16 @@ def ensure_endswith(string: str, suffix: str) -> str:
 		return string + suffix
 	return string
 
+def getitem[T, D](l: Sequence[T], index: int, default: D=None) -> T | D:
+	return l[index] if -len(l) <= index < len(l) else default
+
+def isdigit(s):
+	try:
+		int(s)
+		return True
+	except (ValueError, TypeError):
+		return False
+
 class Saved:
 	def __init__(self, file: str):
 		self.filename = file
@@ -150,13 +160,13 @@ class Saved:
 		logger.debug(f"appending {last} to lines")
 		self.save()
 
-	def update_old(self) -> None:
-		for index, preurl in enumerate(self.lines):
+	def update_old(self, start=0) -> None:
+		for index, preurl in enumerate(self.lines[start:], start):
 			url = preurl.strip()
 			if not make_link(url).is_updatatable():
 				continue
 			last = add_link(url)
-			logger.info(f"Updated: {url}")
+			logger.info(f"Updated {index + 1}: {url}")
 			if not last:
 				continue
 			self.lines[index] = last
@@ -572,7 +582,14 @@ def parse_args_and_save(saved: Saved) -> None:
 	given = sys.argv[1:]
 
 	if "-u" in sys.argv:
-		saved.update_old()
+		u_index = sys.argv.index("-u")
+		if (start := getitem(sys.argv, u_index)) and isdigit(start):
+			given.pop(u_index)
+			start = int(start) - 1
+		else:
+			start = 0
+
+		saved.update_old(start)
 		given.remove("-u")
 
 	if "-f" in sys.argv:
