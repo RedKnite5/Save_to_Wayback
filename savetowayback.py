@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import sys
 import time
+from os import path
 from collections import deque
 from collections.abc import Callable, Sequence
 from urllib.parse import urljoin
@@ -20,9 +21,11 @@ import bs4
 import requests
 import savepagenow as save
 
+DATA_FOLDER	= "data"
 
-NEW_URLS = "new_urls.txt"
-SAVED_URLS = "saved.txt"
+NEW_URLS = path.join(DATA_FOLDER, "new_urls.txt")
+SAVED_URLS = path.join(DATA_FOLDER, "saved.txt")
+UPDATE_EXTRAS = path.join(DATA_FOLDER, "update_extras.txt")
 DEFAULT_DELAY = 30
 BLOCKED_BY_ROBOTS_DELAY = 120
 SAVE = True
@@ -72,7 +75,7 @@ open_utf8 = partial(open, encoding="utf-8")
 def setup_loggers() -> logging.Logger:
 	"""To setup as many loggers as you want"""
 
-	log_file = "urls_saved.log"
+	log_file = path.join(DATA_FOLDER, "urls_saved.log")
 
 	FORMAT = "%(asctime)s %(message)s"
 	formatter = logging.Formatter(FORMAT)
@@ -110,7 +113,7 @@ def ensure_endswith(string: str, suffix: str) -> str:
 def getitem[T, D](l: Sequence[T], index: int, default: D=None) -> T | D:
 	return l[index] if -len(l) <= index < len(l) else default
 
-def isdigit(s):
+def isdigit(s) -> bool:
 	try:
 		int(s)
 		return True
@@ -160,7 +163,7 @@ class Saved:
 		logger.debug(f"appending {last} to lines")
 		self.save()
 
-	def update_old(self, start=0) -> None:
+	def update_old(self, start: int = 0) -> None:
 		for index, preurl in enumerate(self.lines[start:], start):
 			url = preurl.strip()
 			if not make_link(url).is_updatatable():
@@ -531,7 +534,7 @@ def write_saved(lines: Sequence[str], filename: str) -> None:
 	with open_utf8(filename, "w") as save_file:
 		save_file.write("\n".join(lines))
 
-def append_update_extras(url: str, filename: str="update_extras.txt") -> None:
+def append_update_extras(url: str, filename: str=UPDATE_EXTRAS) -> None:
 	if not SAVE:
 		return
 	with open_utf8(filename, "a") as file:

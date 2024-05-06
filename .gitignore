@@ -5,3 +5,7 @@ save_dump.txt
 urls_unfinished.txt
 saved_backup.txt
 
+__pycache__/
+.mypy_cache/
+.vscode/
+my_texts/
