@@ -16,7 +16,7 @@
 			"class": "logging.handlers.RotatingFileHandler",
 			"level": "DEBUG",
 			"formatter": "simple",
-			"file": "data/urls_saved.log",
+			"filename": "data/urls_saved.log",
 			"maxBytes": 5000000,
 			"backupCount": 4
 		}
