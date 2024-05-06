@@ -4,6 +4,7 @@
 # used DEC/13/22
 # used APR/26/23
 # used DEC/19/23
+# used MAY/5/24
 
 from __future__ import annotations
 
@@ -174,7 +175,7 @@ class Saved:
 				continue
 			self.lines[index] = last
 			self.save()
-			
+
 
 def get_elements(url: str, func: TagIdentifier) -> list[bs4.element.Tag]:
 	page = requests.get(url, timeout=60)
@@ -571,13 +572,13 @@ def save_format(url: str | None) -> str | None:
 		return url
 	return cut_end(url, "?view_adult=true")
 
-HELP = """Usage: python3 savetowayback.py [-uf] [URLS]...
+HELP = """Usage: python3 savetowayback.py [-f] [-u [START]] [URLS]...
 	Save webpages to the wayback machine.
 
 	URLS should be a space separated list of webpages to save to the wayback machine
 
 	Options:
-	  -u        save new content on any old webpages
+	  -u START  save new content on any old webpages starting at line START, default 0
 	  -f        look in "new_urls.txt" for a list of urls to save
 """
 
@@ -586,7 +587,7 @@ def parse_args_and_save(saved: Saved) -> None:
 
 	if "-u" in sys.argv:
 		u_index = sys.argv.index("-u")
-		if (start := getitem(sys.argv, u_index)) and isdigit(start):
+		if (start := getitem(sys.argv, u_index+1)) and isdigit(start):
 			given.pop(u_index)
 			start = int(start) - 1
 		else:
