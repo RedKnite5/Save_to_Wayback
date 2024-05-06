@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import logging
+import logging.config
 import sys
 import time
 from os import path
@@ -17,6 +18,7 @@ from collections.abc import Callable, Sequence
 from urllib.parse import urljoin
 from functools import partial
 import signal
+import json
 
 import bs4
 import requests
@@ -76,27 +78,11 @@ open_utf8 = partial(open, encoding="utf-8")
 def setup_loggers() -> logging.Logger:
 	"""To setup as many loggers as you want"""
 
-	log_file = path.join(DATA_FOLDER, "urls_saved.log")
+	with open_utf8("logging_config.json") as file:
+		config = json.load(file)
+	logging.config.dictConfig(config)
 
-	FORMAT = "%(asctime)s %(message)s"
-	formatter = logging.Formatter(FORMAT)
-
-	stderr_handler = logging.StreamHandler()
-	file_handler = logging.FileHandler(log_file)
-
-	stderr_handler.setFormatter(formatter)
-	file_handler.setFormatter(formatter)
-
-	stderr_log = logging.getLogger("stderr_logger")
-	file_log = logging.getLogger("stderr_logger.file_logger")
-	stderr_log.setLevel(logging.INFO)
-	stderr_handler.setLevel(logging.INFO)
-	file_log.setLevel(logging.DEBUG)
-	file_handler.setLevel(logging.DEBUG)
-	stderr_log.addHandler(stderr_handler)
-	file_log.addHandler(file_handler)
-
-	return file_log
+	return logging.getLogger("savetowayback")
 
 
 logger = setup_loggers()
