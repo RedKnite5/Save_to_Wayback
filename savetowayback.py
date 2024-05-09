@@ -4,7 +4,7 @@
 # used DEC/13/22
 # used APR/26/23
 # used DEC/19/23
-# used MAY/5/24
+# used MAY/5/24 -u 292
 
 from __future__ import annotations
 
@@ -19,17 +19,21 @@ from urllib.parse import urljoin
 from functools import partial
 import signal
 import json
+from typing import Any, NoReturn
+from types import FrameType, TracebackType
 
 import bs4
 import requests
 import savepagenow as save
+from savepagenow import exceptions as SPN_exceptions
+
 
 DATA_FOLDER	= "data"
 
 NEW_URLS = path.join(DATA_FOLDER, "new_urls.txt")
 SAVED_URLS = path.join(DATA_FOLDER, "saved.txt")
 UPDATE_EXTRAS = path.join(DATA_FOLDER, "update_extras.txt")
-DEFAULT_DELAY = 30
+DEFAULT_DELAY = 45
 BLOCKED_BY_ROBOTS_DELAY = 120
 SAVE = True
 
@@ -58,26 +62,31 @@ RR_URL  = "https://www.royalroad.com/"
 
 TagIdentifier = Callable[[bs4.element.Tag], bool]
 
-class TimeoutError(RuntimeError):
+class ConnectionTimeoutError(RuntimeError):
 	pass
 
 class Timeout:
-	def __init__(self, seconds=1, error_message='Timeout'):
+	def __init__(self, seconds: int=1, error_message: str="Timeout"):
 		self.seconds = seconds
 		self.error_message = error_message
-	def handle_timeout(self, signum, frame):
-		raise TimeoutError(self.error_message)
-	def __enter__(self):
+
+	def handle_timeout(self, signum: int, frame: FrameType | None) -> NoReturn:
+		raise ConnectionTimeoutError(self.error_message)
+
+	def __enter__(self) -> None:
 		signal.signal(signal.SIGALRM, self.handle_timeout)
 		signal.alarm(self.seconds)
-	def __exit__(self, type, value, traceback):
+
+	def __exit__(self,
+		type_: type[BaseException] | None,
+		value: BaseException | None,
+		traceback: TracebackType | None
+	) -> None:
 		signal.alarm(0)
 
 open_utf8 = partial(open, encoding="utf-8")
 
-def setup_loggers() -> logging.Logger:
-	"""To setup as many loggers as you want"""
-
+def setup_logging() -> logging.Logger:
 	with open_utf8("logging_config.json") as file:
 		config = json.load(file)
 	logging.config.dictConfig(config)
@@ -85,7 +94,7 @@ def setup_loggers() -> logging.Logger:
 	return logging.getLogger("savetowayback")
 
 
-logger = setup_loggers()
+logger = setup_logging()
 
 def cut_end(string: str, ending: str) -> str:
 	if string.endswith(ending):
@@ -100,7 +109,7 @@ def ensure_endswith(string: str, suffix: str) -> str:
 def getitem[T, D](l: Sequence[T], index: int, default: D=None) -> T | D:
 	return l[index] if -len(l) <= index < len(l) else default
 
-def isdigit(s) -> bool:
+def isdigit(s: Any) -> bool:
 	try:
 		int(s)
 		return True
@@ -153,7 +162,7 @@ class Saved:
 	def update_old(self, start: int = 0) -> None:
 		for index, preurl in enumerate(self.lines[start:], start):
 			url = preurl.strip()
-			if not make_link(url).is_updatatable():
+			if not make_link(url).is_updatatable:
 				continue
 			last = add_link(url)
 			logger.info(f"Updated {index + 1}: {url}")
@@ -172,14 +181,13 @@ class WebsiteLink:
 	"""Base class for links to all websites"""
 	URL_PRFIX: str = ""
 
+	is_updatatable: bool = False
+
 	def __init__(self, url: str):
 		self.url: str = url
 
 	def get_next(self) -> str | None:
 		return None
-
-	def is_updatatable(self) -> bool:
-		return False
 
 	def comp_format(self) -> str:
 		return self.url.strip(" /")
@@ -224,8 +232,7 @@ class XenForoLink(WebsiteLink):
 	def comp_format(self) -> str:
 		return self.url.strip().split("/page-")[0].strip("/")
 
-	def is_updatatable(self) -> bool:
-		return True
+	is_updatatable = True
 
 class SBLink(XenForoLink):
 	URL_PRFIX = SB_URL
@@ -325,6 +332,9 @@ class IMHLink(WebsiteLink):
 			return True
 		except (AssertionError, KeyError):
 			return False
+	
+	def gallery_to_view(self, url):
+		return self.make_new_url(ensure_endswith(url, "/"))
 
 	def make_new_url(self, url: str) -> str:
 		if "gallery" in url:
@@ -333,6 +343,14 @@ class IMHLink(WebsiteLink):
 		parts = url.split("/")
 		parts[-2] = str(int(parts[-2]) + 1)
 		return "/".join(parts)
+
+	def new_url_with_redirect(self, url: str) -> str:
+		old_url = url
+		redirect = check_redirect(old_url)
+		if redirect != "":
+			old_url = self.URL_PRFIX[:-1] + redirect
+
+		return self.gallery_to_view(old_url)
 
 	def get_total_pages(self, url: str) -> tuple[int, bool]:
 		page = requests.get(url, timeout=120)
@@ -348,7 +366,8 @@ class IMHLink(WebsiteLink):
 	def get_next(self) -> str:
 		logger.debug(f"Getting next imh style url from {self.url}")
 
-		new_url = self.make_new_url(ensure_endswith(self.url, "/"))
+		new_url = self.new_url_with_redirect(self.url)
+
 		pages, is_last_page = self.get_total_pages(new_url)
 
 		if not pages:
@@ -422,8 +441,7 @@ class AO3Link(WebsiteLink):
 	def comp_format(self) -> str:
 		return cut_end(self.url.strip(), "?view_adult=true").split("chapters")[0]
 
-	def is_updatatable(self) -> bool:
-		return True
+	is_updatatable = True
 
 class RRLink(WebsiteLink):
 	URL_PRFIX = RR_URL
@@ -442,8 +460,7 @@ class RRLink(WebsiteLink):
 		self.url = ""  # should never get here
 		return self.url
 
-	def is_updatatable(self) -> bool:
-		return True
+	is_updatatable = True
 
 def make_link(url: str) -> WebsiteLink:
 	link_classes = (
@@ -462,22 +479,40 @@ def make_link(url: str) -> WebsiteLink:
 	return WebsiteLink(url)
 
 def pick_url_to_save(link: WebsiteLink, url_original: str) -> str:
-	if link.is_updatatable():
+	# TODO: in the case of redirection the original case should instead return the base form of the link url
+	if link.is_updatatable:
 		return link.url
+	#if link.can_redirect() and comp_format(link.url) != comp_format(url_original):
+	#	logger.debug(f"record both {link.url} and {url_original}")
+	#	return link.url, url_original
 	return url_original.strip()
+
+def check_redirect(url: str) -> str:
+	try:
+		r = requests.head(url, timeout=60)
+	except requests.exceptions.Timeout:
+		logger.warning(f"redirection check on {url} timed out")
+		return ""
+
+	location = r.headers.get("location")
+	if location is not None and location != url:
+		logger.debug(f"redirected from {url} to {location}")
+		return location
+	return ""
 
 def capture_with_logging(link: WebsiteLink) -> None:
 	logger.debug("Start Saving")
 	with Timeout(seconds=300):
 		save.capture(
 			link.url,
-			user_agent="mr.Awesome10000@gmail.com using savepagenow python",
-			accept_cache=True
+			user_agent="mr.awesome10000@gmail.com using savepagenow Python",
+			accept_cache=True,
+			authenticate=True
 		)
 	logger.info(f"Saved: {link}")
 
 def too_many_reqs_delay(errors: int) -> int:
-	return min(60 * 2 * 2**errors, 4*60*60)
+	return int(min(60 * 2 * 2**errors, 4*60*60))
 
 def save_url(link: WebsiteLink) -> None:
 	errors = 0
@@ -491,11 +526,18 @@ def save_url(link: WebsiteLink) -> None:
 			# should not save in this case
 			time.sleep(BLOCKED_BY_ROBOTS_DELAY)
 			return
-		except save.exceptions.TooManyRequests as exc:
+		except SPN_exceptions.TooManyRequests as exc:
 			errors += 1
 			logger.warning(f"Error {errors}: {link}, TooManyRequests: {exc}")
+
+
+			if isinstance(link, IMHLink) and errors >= 2:
+				new_url = link.new_url_with_redirect(link.url)
+				link.url = new_url
+
+
 			time.sleep(too_many_reqs_delay(errors))
-		except TimeoutError as exc:
+		except ConnectionTimeoutError as exc:
 			errors += 1
 			logger.warning(f"Error {errors}: {link}, Timeout: {exc}")
 			time.sleep(too_many_reqs_delay(errors))
@@ -558,14 +600,14 @@ def save_format(url: str | None) -> str | None:
 		return url
 	return cut_end(url, "?view_adult=true")
 
-HELP = """Usage: python3 savetowayback.py [-f] [-u [START]] [URLS]...
+HELP = f"""Usage: python3 savetowayback.py [-u [START]] [-f] [URLS]...
 	Save webpages to the wayback machine.
 
 	URLS should be a space separated list of webpages to save to the wayback machine
 
 	Options:
 	  -u START  save new content on any old webpages starting at line START, default 0
-	  -f        look in "new_urls.txt" for a list of urls to save
+	  -f        look in "{NEW_URLS}" for a list of urls to save
 """
 
 def parse_args_and_save(saved: Saved) -> None:

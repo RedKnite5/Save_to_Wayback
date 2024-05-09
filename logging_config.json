@@ -18,7 +18,7 @@
 			"formatter": "simple",
 			"filename": "data/urls_saved.log",
 			"maxBytes": 5000000,
-			"backupCount": 4
+			"backupCount": 10
 		}
 	},
 	"loggers": {
