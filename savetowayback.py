@@ -4,7 +4,7 @@
 # used DEC/13/22
 # used APR/26/23
 # used DEC/19/23
-# used MAY/5/24 -u 292
+# used MAY/5/24 -u 954
 
 from __future__ import annotations
 
@@ -632,12 +632,6 @@ def parse_args_and_save(saved: Saved) -> None:
 
 	save_url_list(given, saved, save_to_new=False)
 
-def pick_exit_log_message(exc: BaseException) -> str:
-	if isinstance(exc, KeyboardInterrupt):
-		return "KeyboardInterrupt"
-	logger.critical(exc)
-	return "Uncaught Fatal Exception"
-
 def main() -> None:
 	saved = Saved(SAVED_URLS)
 
@@ -647,9 +641,12 @@ def main() -> None:
 
 	try:
 		parse_args_and_save(saved)
-	except BaseException as exc:
-		log_message = pick_exit_log_message(exc)
-		logger.critical(log_message)
+	except KeyboardInterrupt:
+		logger.critical("Keyboard Interrupt")
+		sys.exit()
+	except Exception as exc:
+		logger.critical(exc)
+		logger.critical("Uncaught Fatal Exception")
 		raise
 	finally:
 		logger.info("Stopping")
