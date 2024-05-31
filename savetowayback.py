@@ -158,18 +158,24 @@ class Saved:
 		self.add(last)
 		logger.debug(f"appending {last} to lines")
 		self.save()
+	
+	def update_with_context(self, url: str, index: int):
+		try:
+			last = add_link(url)
+		finally:
+			logger.info(f"Updated {index + 1}: {url}")
+			if not last:
+				return
+			self.lines[index] = last
+			self.save()
+
 
 	def update_old(self, start: int = 0) -> None:
 		for index, preurl in enumerate(self.lines[start:], start):
 			url = preurl.strip()
 			if not make_link(url).is_updatatable:
 				continue
-			last = add_link(url)
-			logger.info(f"Updated {index + 1}: {url}")
-			if not last:
-				continue
-			self.lines[index] = last
-			self.save()
+			self.update_with_context(url, index)
 
 
 def get_elements(url: str, func: TagIdentifier) -> list[bs4.element.Tag]:
