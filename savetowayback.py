@@ -152,22 +152,22 @@ class Saved:
 		write_saved(self.lines, self.filename)
 		logger.info("Recording")
 
-	def add_last_to_saved(self, last: str | None) -> None:
+	def add_last_to_saved(self, last: str) -> None:
 		if not last:
 			return
 		self.add(last)
 		logger.debug(f"appending {last} to lines")
 		self.save()
 	
-	def update_with_context(self, url: str, index: int):
+	def try_update(self, url: str, index: int):
+		saver = Link_Adder()
 		try:
-			last = add_link(url)
+			saver.add_link(url)
 		finally:
-			logger.info(f"Updated {index + 1}: {url}")
-			if not last:
-				return
-			self.lines[index] = last
-			self.save()
+			logger.info(f"Updated {index + 1}: {saver.last_url}")
+			if saver.last_url:
+				self.lines[index] = saver.last_url
+				self.save()
 
 
 	def update_old(self, start: int = 0) -> None:
@@ -175,8 +175,59 @@ class Saved:
 			url = preurl.strip()
 			if not make_link(url).is_updatatable:
 				continue
-			self.update_with_context(url, index)
+			self.try_update(url, index)
 
+class Link_Adder:
+	def __init__(self, url=""):
+		self.last_url: str = ""
+
+		if url:
+			self.add_link(url)
+
+	def add_link(self, url: str) -> str:
+		logger.debug(f"add link {url}")
+		self.last_url = ""
+
+		link = make_link(url.strip())
+
+		while link.url:
+			self.save_url(link, url)
+			link = link.attempt_get_next()
+
+		return self.last_url
+
+	def save_url(self, link: WebsiteLink, url: str) -> None:
+		errors = 0
+		while True:
+			try:
+				capture_with_logging(link)
+				# The below line needs to be here so that if the program is interupted while
+				# it is sleeping it is recorded that the current url was saved.
+				self.last_url = pick_url_to_save(link, url)
+				time.sleep(DEFAULT_DELAY)
+				return
+			except save.BlockedByRobots as exc:
+				logger.error(f"Error {errors} Skipping blocked by robots: {link}, {exc}")
+				# should not save in this case
+				time.sleep(BLOCKED_BY_ROBOTS_DELAY)
+				return
+			except SPN_exceptions.TooManyRequests as exc:
+				errors += 1
+				logger.warning(f"Error {errors}: {link}, TooManyRequests: {exc}")
+
+				if isinstance(link, IMHLink) and errors >= 2:
+					new_url = link.new_url_with_redirect(link.url)
+					link.url = new_url
+
+				time.sleep(too_many_reqs_delay(errors))
+			except ConnectionTimeoutError as exc:
+				errors += 1
+				logger.warning(f"Error {errors}: {link}, Timeout: {exc}")
+				time.sleep(too_many_reqs_delay(errors))
+			except Exception as exc:
+				errors += 1
+				logger.warning(f"Error {errors}: {link}, {type(exc)}: {exc}")
+				time.sleep(too_many_reqs_delay(errors))
 
 def get_elements(url: str, func: TagIdentifier) -> list[bs4.element.Tag]:
 	page = requests.get(url, timeout=60)
@@ -413,8 +464,8 @@ class AO3Link(WebsiteLink):
 		if "/chapters/" not in self.url:
 			return
 		base = self.url.split("/chapters/")[0]
-		add_link(base + "?view_full_work=true")
-		add_link(base + "?view_adult=true&view_full_work=true")
+		Link_Adder(base + "?view_full_work=true")
+		Link_Adder(base + "?view_adult=true&view_full_work=true")
 
 	def get_next(self) -> str:
 		if self.url.endswith("view_full_work=true"):
@@ -520,51 +571,6 @@ def capture_with_logging(link: WebsiteLink) -> None:
 def too_many_reqs_delay(errors: int) -> int:
 	return int(min(60 * 2 * 2**errors, 4*60*60))
 
-def save_url(link: WebsiteLink) -> None:
-	errors = 0
-	while True:
-		try:
-			capture_with_logging(link)
-			time.sleep(DEFAULT_DELAY)
-			return
-		except save.BlockedByRobots as exc:
-			logger.error(f"Error {errors} Skipping blocked by robots: {link}, {exc}")
-			# should not save in this case
-			time.sleep(BLOCKED_BY_ROBOTS_DELAY)
-			return
-		except SPN_exceptions.TooManyRequests as exc:
-			errors += 1
-			logger.warning(f"Error {errors}: {link}, TooManyRequests: {exc}")
-
-
-			if isinstance(link, IMHLink) and errors >= 2:
-				new_url = link.new_url_with_redirect(link.url)
-				link.url = new_url
-
-
-			time.sleep(too_many_reqs_delay(errors))
-		except ConnectionTimeoutError as exc:
-			errors += 1
-			logger.warning(f"Error {errors}: {link}, Timeout: {exc}")
-			time.sleep(too_many_reqs_delay(errors))
-		except Exception as exc:
-			errors += 1
-			logger.warning(f"Error {errors}: {link}, {type(exc)}: {exc}")
-			time.sleep(too_many_reqs_delay(errors))
-
-def add_link(url: str) -> str | None:
-	logger.debug(f"add_link {url}")
-	last_url = None
-
-	link = make_link(url.strip())
-
-	while link.url:
-		save_url(link)
-		last_url = pick_url_to_save(link, url)
-		link = link.attempt_get_next()
-
-	return last_url
-
 def write_saved(lines: Sequence[str], filename: str) -> None:
 	with open_utf8(filename, "w") as save_file:
 		save_file.write("\n".join(lines))
@@ -582,7 +588,7 @@ def save_url_list(urls: Sequence[str], saved: Saved, save_to_new: bool) -> None:
 		if saved.is_saved(url):
 			logger.info(f"is saved, skipping: {url}")
 			continue
-		last = save_format(add_link(url))
+		last = save_format(Link_Adder(url).last_url)
 		saved.add_last_to_saved(last)
 		if SAVE and save_to_new:
 			write_saved(url_queue, NEW_URLS)
@@ -590,7 +596,7 @@ def save_url_list(urls: Sequence[str], saved: Saved, save_to_new: bool) -> None:
 def comp_format(url: str) -> str:
 	return make_link(url).comp_format()
 
-def save_format(url: str | None) -> str | None:
+def save_format(url: str) -> str:
 	"""Format the url to be saved in the save file"""
 
 	# TODO: move to classes
