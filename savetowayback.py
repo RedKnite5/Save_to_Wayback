@@ -158,9 +158,9 @@ class Saved:
 		self.add(last)
 		logger.debug(f"appending {last} to lines")
 		self.save()
-	
-	def try_update(self, url: str, index: int):
-		saver = Link_Adder()
+
+	def try_update(self, url: str, index: int, first: bool) -> None:
+		saver = Link_Adder(first=first)
 		try:
 			saver.add_link(url)
 		finally:
@@ -175,11 +175,15 @@ class Saved:
 			url = preurl.strip()
 			if not make_link(url).is_updatatable:
 				continue
-			self.try_update(url, index)
+			self.try_update(url, index, index == start)
 
 class Link_Adder:
-	def __init__(self, url=""):
+	def __init__(self, url="", first: bool = False):
 		self.last_url: str = ""
+		if first:
+			self.sleep_time = 0
+		else:
+			self.sleep_time = DEFAULT_DELAY
 
 		if url:
 			self.add_link(url)
@@ -200,16 +204,17 @@ class Link_Adder:
 		errors = 0
 		while True:
 			try:
+				time.sleep(self.sleep_time)
 				capture_with_logging(link)
 				# The below line needs to be here so that if the program is interupted while
 				# it is sleeping it is recorded that the current url was saved.
 				self.last_url = pick_url_to_save(link, url)
-				time.sleep(DEFAULT_DELAY)
+				self.sleep_time = DEFAULT_DELAY
 				return
 			except save.BlockedByRobots as exc:
 				logger.error(f"Error {errors} Skipping blocked by robots: {link}, {exc}")
 				# should not save in this case
-				time.sleep(BLOCKED_BY_ROBOTS_DELAY)
+				self.sleep_time = BLOCKED_BY_ROBOTS_DELAY
 				return
 			except SPN_exceptions.TooManyRequests as exc:
 				errors += 1
@@ -219,15 +224,15 @@ class Link_Adder:
 					new_url = link.new_url_with_redirect(link.url)
 					link.url = new_url
 
-				time.sleep(too_many_reqs_delay(errors))
+				self.sleep_time = too_many_reqs_delay(errors)
 			except ConnectionTimeoutError as exc:
 				errors += 1
 				logger.warning(f"Error {errors}: {link}, Timeout: {exc}")
-				time.sleep(too_many_reqs_delay(errors))
+				self.sleep_time = too_many_reqs_delay(errors)
 			except Exception as exc:
 				errors += 1
 				logger.warning(f"Error {errors}: {link}, {type(exc)}: {exc}")
-				time.sleep(too_many_reqs_delay(errors))
+				self.sleep_time = too_many_reqs_delay(errors)
 
 def get_elements(url: str, func: TagIdentifier) -> list[bs4.element.Tag]:
 	page = requests.get(url, timeout=60)
@@ -583,12 +588,13 @@ def append_update_extras(url: str, filename: str=UPDATE_EXTRAS) -> None:
 
 def save_url_list(urls: Sequence[str], saved: Saved, save_to_new: bool) -> None:
 	url_queue = deque(url.strip() for url in urls)
+	saver = Link_Adder()
 	for url in urls:
 		url_queue.popleft()
 		if saved.is_saved(url):
 			logger.info(f"is saved, skipping: {url}")
 			continue
-		last = save_format(Link_Adder(url).last_url)
+		last = save_format(saver.add_link(url))
 		saved.add_last_to_saved(last)
 		if SAVE and save_to_new:
 			write_saved(url_queue, NEW_URLS)
