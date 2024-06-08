@@ -9,7 +9,8 @@
 		"shorten_urls": {
 			"()": "stw_logger.STDOutFormatter",
 			"url": "url",
-			"shorten": true
+			"shorten": true,
+			"datefmt": "%b-%d %H:%M:%S"
 		}
 	},
 	"handlers": {

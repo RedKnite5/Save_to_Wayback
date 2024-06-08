@@ -18,8 +18,8 @@ class STDOutFormatter(logging.Formatter):
 		"https://www.royalroad.com/fiction/": "RR/",
 	}
 
-	def __init__(self, *, url: str | None, shorten):
-		super().__init__(fmt="%(asctime)s %(message)s")
+	def __init__(self, *, url: str | None, shorten: bool, datefmt: str | None = None):
+		super().__init__(fmt="%(asctime)s %(message)s", datefmt=datefmt)
 		self.url = url
 		self.shorten = shorten
 
@@ -27,10 +27,7 @@ class STDOutFormatter(logging.Formatter):
 		# print(f"{record.__dict__ = }")
 		url = getattr(record, "url", None)
 
-		if hasattr(url, "url"):
-			url = str(url.url)
-		else:
-			url = str(url)
+		url = str(url)
 
 		if self.shorten:
 			url = dict_replace(url, self.abvreviations)
