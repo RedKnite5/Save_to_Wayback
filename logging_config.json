@@ -3,6 +3,10 @@
 	"formatters": {
 		"simple": {
 			"format": "%(asctime)s %(message)s"
+		},
+		"shorten_urls": {
+			"()": "STDOutFormatter",
+			"url": "url"
 		}
 	},
 	"handlers": {
