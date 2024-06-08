@@ -92,13 +92,6 @@ class Timeout:
 
 open_utf8 = partial(open, encoding="utf-8")
 
-class STDOutFormatter(logging.Formatter):
-	def __init__(self, *, url: str | None):
-		super().__init__()
-		self.url = url
-	
-	def format(self, record: logging.LogRecord) -> str:
-		pass
 
 def setup_logging() -> logging.Logger:
 	with open_utf8("logging_config.json") as file:
