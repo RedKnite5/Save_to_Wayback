@@ -13,6 +13,7 @@ import logging.config
 import sys
 import time
 from os import path
+from os import getenv
 from collections import deque
 from collections.abc import Callable, Sequence
 from urllib.parse import urljoin
@@ -24,6 +25,7 @@ from types import FrameType, TracebackType
 
 import bs4
 import requests
+from dotenv import load_dotenv
 import savepagenow as save
 from savepagenow import exceptions as SPN_exceptions
 
@@ -36,6 +38,10 @@ UPDATE_EXTRAS = path.join(DATA_FOLDER, "update_extras.txt")
 DEFAULT_DELAY = 45
 BLOCKED_BY_ROBOTS_DELAY = 120
 SAVE = True
+
+
+load_dotenv()
+EMAIL = getenv("SAVEPAGENOW_EMAIL")
 
 # TODO: on repeated errors check if page has already been saved
 # TODO: ff comp_format
@@ -201,6 +207,10 @@ class Link_Adder:
 		return self.last_url
 
 	def save_url(self, link: WebsiteLink, url: str) -> None:
+		expected_errors = (
+			ConnectionTimeoutError,
+			SPN_exceptions.WaybackRuntimeError,
+		)
 		errors = 0
 		while True:
 			try:
@@ -225,13 +235,13 @@ class Link_Adder:
 					link.url = new_url
 
 				self.sleep_time = too_many_reqs_delay(errors)
-			except ConnectionTimeoutError as exc:
+			except expected_errors as exc:
 				errors += 1
-				logger.warning(f"Error {errors}: {link}, Timeout: {exc}")
+				logger.warning(f"Error {errors}: {link}, {type(exc)}: {exc}")
 				self.sleep_time = too_many_reqs_delay(errors)
 			except Exception as exc:
 				errors += 1
-				logger.warning(f"Error {errors}: {link}, {type(exc)}: {exc}")
+				logger.warning(f"Error Unknown {errors}: {link}, {type(exc)}: {exc}")
 				self.sleep_time = too_many_reqs_delay(errors)
 
 def get_elements(url: str, func: TagIdentifier) -> list[bs4.element.Tag]:
@@ -567,7 +577,7 @@ def capture_with_logging(link: WebsiteLink) -> None:
 	with Timeout(seconds=300):
 		save.capture(
 			link.url,
-			user_agent="mr.awesome10000@gmail.com using savepagenow Python",
+			user_agent=f"{EMAIL} using savepagenow Python",
 			accept_cache=True,
 			authenticate=True
 		)
@@ -588,7 +598,7 @@ def append_update_extras(url: str, filename: str=UPDATE_EXTRAS) -> None:
 
 def save_url_list(urls: Sequence[str], saved: Saved, save_to_new: bool) -> None:
 	url_queue = deque(url.strip() for url in urls)
-	saver = Link_Adder()
+	saver = Link_Adder(first=True)
 	for url in urls:
 		url_queue.popleft()
 		if saved.is_saved(url):

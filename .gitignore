@@ -4,6 +4,7 @@ backup_saved2.txt
 save_dump.txt
 urls_unfinished.txt
 saved_backup.txt
+.env
 
 __pycache__/
 .mypy_cache/
