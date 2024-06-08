@@ -57,7 +57,7 @@ RR_URL  = "https://www.royalroad.com/"
 
 
 # ffn now has NOARCHIVE and doesnt work
-# nhentai has robots.txt tell wayback to not save
+# NH has robots.txt tell wayback to not save
 
 # fix redirects
 # https://imhentai.xxx/view/723747/1/
@@ -116,7 +116,7 @@ def ensure_endswith(string: str, suffix: str) -> str:
 def getitem[T, D](l: Sequence[T], index: int, default: D=None) -> T | D:
 	return l[index] if -len(l) <= index < len(l) else default
 
-def isdigit(s: Any) -> bool:
+def isdigit(s: Any, /) -> bool:
 	try:
 		int(s)
 		return True

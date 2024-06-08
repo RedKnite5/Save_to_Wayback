@@ -26,7 +26,6 @@ class STDOutFormatter(logging.Formatter):
 	def format(self, record: logging.LogRecord) -> str:
 		# print(f"{record.__dict__ = }")
 		url = getattr(record, "url", None)
-
 		url = str(url)
 
 		if self.shorten:
