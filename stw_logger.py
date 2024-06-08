@@ -32,4 +32,4 @@ class STDOutFormatter(logging.Formatter):
 		if self.shorten:
 			url = dict_replace(url, self.abvreviations)
 
-		return super().format(record) % {"url": url}
+		return super().format(record).format(url=url)

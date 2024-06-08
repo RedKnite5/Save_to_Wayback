@@ -163,7 +163,7 @@ class Saved:
 		if not last:
 			return
 		self.add(last)
-		logger.debug("appending %(url)s to lines", extra={"url": last})
+		logger.debug("appending {url} to lines", extra={"url": last})
 		self.save()
 
 	def try_update(self, url: str, index: int, first: bool) -> None:
@@ -171,7 +171,7 @@ class Saved:
 		try:
 			saver.add_link(url)
 		finally:
-			logger.info(f"Updated {index + 1}: %(url)s", extra={"url": saver.last_url})
+			logger.info(f"Updated {index + 1}: {{url}}", extra={"url": saver.last_url})
 			if saver.last_url:
 				self.lines[index] = saver.last_url
 				self.save()
@@ -196,7 +196,7 @@ class Link_Adder:
 			self.add_link(url)
 
 	def add_link(self, url: str) -> str:
-		logger.debug("add link %(url)s", extra={"url": url})
+		logger.debug("add link {url}", extra={"url": url})
 		self.last_url = ""
 
 		link = make_link(url.strip())
@@ -224,13 +224,13 @@ class Link_Adder:
 				self.sleep_time = DEFAULT_DELAY
 				return
 			except save.BlockedByRobots as exc:
-				logger.error(f"Error {errors} Skipping blocked by robots: %(url)s, {exc}", extra=extra)
+				logger.error(f"Error {errors} Skipping blocked by robots: {{url}}, {exc}", extra=extra)
 				# should not save in this case
 				self.sleep_time = BLOCKED_BY_ROBOTS_DELAY
 				return
 			except SPN_exceptions.TooManyRequests as exc:
 				errors += 1
-				logger.warning(f"Error {errors}: %(url)s, TooManyRequests: {exc}", extra=extra)
+				logger.warning(f"Error {errors}: {{url}}, TooManyRequests: {exc}", extra=extra)
 
 				if isinstance(link, IMHLink) and errors >= 2:
 					new_url = link.new_url_with_redirect(link.url)
@@ -239,11 +239,11 @@ class Link_Adder:
 				self.sleep_time = too_many_reqs_delay(errors)
 			except expected_errors as exc:
 				errors += 1
-				logger.warning(f"Error {errors}: %(url)s, {type(exc)}: {exc}", extra=extra)
+				logger.warning(f"Error {errors}: {{url}}, {type(exc)}: {exc}", extra=extra)
 				self.sleep_time = too_many_reqs_delay(errors)
 			except Exception as exc:
 				errors += 1
-				logger.warning(f"Error Unknown {errors}: %(url)s, {type(exc)}: {exc}", extra=extra)
+				logger.warning(f"Error Unknown {errors}: {{url}}, {type(exc)}: {exc}", extra=extra)
 				self.sleep_time = too_many_reqs_delay(errors)
 
 def get_elements(url: str, func: TagIdentifier) -> list[bs4.element.Tag]:
@@ -278,9 +278,9 @@ class WebsiteLink:
 				self.get_next()
 				return self
 			except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout) as exc:
-				logger.warning(f"Error {i+1} getting next: %(url)s, {exc}", extra={"url": self.url})
+				logger.warning(f"Error {i+1} getting next: {{url}}, {exc}", extra={"url": self.url})
 				time.sleep(1)
-		logger.error("Error could not get next from: %(url)s. Skipping", extra={"url": self.url})
+		logger.error("Error could not get next from: {url}. Skipping", extra={"url": self.url})
 		return WebsiteLink("")
 
 class XenForoLink(WebsiteLink):
@@ -438,7 +438,7 @@ class IMHLink(WebsiteLink):
 		return pages, is_last_page
 
 	def get_next(self) -> str:
-		logger.debug("Getting next imh style url from %(url)s", extra={"url": self.url})
+		logger.debug("Getting next imh style url from {url}", extra={"url": self.url})
 
 		new_url = self.new_url_with_redirect(self.url)
 
@@ -448,7 +448,7 @@ class IMHLink(WebsiteLink):
 			# should not write to saved file in this case
 			# currently does
 			append_update_extras(new_url)
-			logger.error("new redirecting url: %(url)s", extra={"url": new_url})
+			logger.error("new redirecting url: {url}", extra={"url": new_url})
 			self.url = ""
 			return self.url
 
@@ -565,12 +565,12 @@ def check_redirect(url: str) -> str:
 	try:
 		r = requests.head(url, timeout=60)
 	except requests.exceptions.Timeout:
-		logger.warning("redirection check on %(url)s timed out", extra={"url": url})
+		logger.warning("redirection check on {url} timed out", extra={"url": url})
 		return ""
 
 	location = r.headers.get("location")
 	if location is not None and location != url:
-		logger.debug(f"redirected from %(url)s to {location}", extra={"url": url})
+		logger.debug(f"redirected from {{url}} to {location}", extra={"url": url})
 		return location
 	return ""
 
@@ -583,7 +583,7 @@ def capture_with_logging(link: WebsiteLink) -> None:
 			accept_cache=True,
 			authenticate=True
 		)
-	logger.info(f"Saved: %(url)s", extra={"url": link})
+	logger.info("Saved: {url}", extra={"url": link})
 
 def too_many_reqs_delay(errors: int) -> int:
 	return int(min(60 * 2 * 2**errors, 4*60*60))
@@ -604,7 +604,7 @@ def save_url_list(urls: Sequence[str], saved: Saved, save_to_new: bool) -> None:
 	for url in urls:
 		url_queue.popleft()
 		if saved.is_saved(url):
-			logger.info("is saved, skipping: %(url)s", extra={"url": url})
+			logger.info("is saved, skipping: {url}", extra={"url": url})
 			continue
 		last = save_format(saver.add_link(url))
 		saved.add_last_to_saved(last)
