@@ -73,7 +73,7 @@ class ConnectionTimeoutError(RuntimeError):
 	pass
 
 class Timeout:
-	def __init__(self, seconds: int=1, error_message: str="Timeout"):
+	def __init__(self, seconds: int = 1, error_message: str = "Timeout"):
 		self.seconds = seconds
 		self.error_message = error_message
 
@@ -85,10 +85,9 @@ class Timeout:
 		signal.alarm(self.seconds)
 
 	def __exit__(self,
-		type_: type[BaseException] | None,
-		value: BaseException | None,
-		traceback: TracebackType | None
-	) -> None:
+			type_: type[BaseException] | None,
+			value: BaseException | None,
+			traceback: TracebackType | None) -> None:
 		signal.alarm(0)
 
 open_utf8 = partial(open, encoding="utf-8")
@@ -114,7 +113,7 @@ def ensure_endswith(string: str, suffix: str) -> str:
 		return string + suffix
 	return string
 
-def getitem[T, D](l: Sequence[T], index: int, default: D=None) -> T | D:
+def getitem[T, D](l: Sequence[T], index: int, default: D = None) -> T | D:
 	return l[index] if -len(l) <= index < len(l) else default
 
 def isdigit(s: Any, /) -> bool:
@@ -178,7 +177,6 @@ class Saved:
 				self.lines[index] = saver.last_url
 				self.save()
 
-
 	def update_old(self, start: int = 0) -> None:
 		for index, preurl in enumerate(self.lines[start:], start):
 			url = preurl.strip()
@@ -212,7 +210,7 @@ class LinkAdder:
 	def save_url(self, link: WebsiteLink, url: str) -> None:
 		expected_errors = (
 			ConnectionTimeoutError,
-			SPN_exceptions.WaybackRuntimeError,
+			SPN_exceptions.UnknownError,
 			req_excepts.SSLError,   # maybe move this to a more specific location?
 		)
 		extra = {}
@@ -227,7 +225,8 @@ class LinkAdder:
 				return
 			except save.BlockedByRobots as exc:
 				logger.error(
-					f"Error {errors} Skipping blocked by robots: {{url}}, {exc}",
+					f"Error {errors} Skipping blocked by robots: {{url}}",
+					exc_info=exc,
 					extra=extra
 				)
 				# should not save in this case
@@ -236,7 +235,8 @@ class LinkAdder:
 			except SPN_exceptions.TooManyRequests as exc:
 				errors += 1
 				logger.warning(
-					f"Error {errors}: {{url}}, TooManyRequests: {exc}",
+					f"Error {errors}: {{url}}, TooManyRequests",
+					exc_info=exc,
 					extra=extra
 				)
 
@@ -248,14 +248,16 @@ class LinkAdder:
 			except expected_errors as exc:
 				errors += 1
 				logger.warning(
-					f"Error {errors}: {{url}}, {type(exc)}: {exc}",
+					f"Error {errors}: {{url}}",
+					exc_info=exc,
 					extra=extra
 				)
 				self.sleep_time = too_many_reqs_delay(errors)
 			except Exception as exc:
 				errors += 1
 				logger.warning(
-					f"Error Unknown {errors}: {{url}}, {type(exc)}: {exc}",
+					f"Error Unknown {errors}: {{url}}",
+					exc_info=exc,
 					extra=extra
 				)
 				self.sleep_time = too_many_reqs_delay(errors)
@@ -297,7 +299,8 @@ class WebsiteLink:
 				return self
 			except catch_exceptions as exc:
 				logger.warning(
-					f"Error {i+1} getting next: {{url}}, {exc}",
+					f"Error {i+1} getting next: {{url}}",
+					exc_info=exc,
 					extra={"url": self.url}
 				)
 				time.sleep(1)
@@ -380,18 +383,25 @@ class NHLink(WebsiteLink):
 		return False
 
 	def make_new_url(self, url: str) -> str:
+		BASE_LENGTH = len(self.URL_PRFIX)
+
 		url = url.strip("/") + "/"
-		id_len = len(url[22:].split("/")[0])
+		url_ending = url[BASE_LENGTH:]
+		id_len = len(url_ending.split("/")[0])
 
 		new_url = ""
-		if url[22 + id_len + 1:].count("/") > 0:
-			parts = url.split("/")
-			parts[-2] = str(int(parts[-2]) + 1)
-			new_url = "/".join(parts)
+		if url[BASE_LENGTH + id_len + 1:].count("/") > 0:
+			new_url = self.increment_page(url)
 		else:
 			new_url = url + "1"
 
 		return new_url.strip("/")
+
+	def increment_page(self, url: str) -> str:
+		parts = url.split("/")
+		page = int(parts[-2])
+		parts[-2] = str(page + 1)
+		return "/".join(parts)
 
 	def get_next(self) -> str:
 		new_url = self.make_new_url(self.url)

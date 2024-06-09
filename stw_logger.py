@@ -24,11 +24,29 @@ class STDOutFormatter(logging.Formatter):
 		self.shorten = shorten
 
 	def format(self, record: logging.LogRecord) -> str:
-		# print(f"{record.__dict__ = }")
 		url = getattr(record, "url", None)
 		url = str(url)
 
+		exc_name = exc_text = ""
+		if record.exc_info:
+			exc_name = getattr(record.exc_info[0], "__name__", "Name Missing")
+			exc_args = record.exc_info[1]
+			exc_text = f"{exc_name}: {exc_args}"
+
 		if self.shorten:
 			url = dict_replace(url, self.abvreviations)
+			exc_text = exc_name
 
-		return super().format(record).format(url=url)
+		record.msg = str(record.msg).format(url=url)
+
+		record.message = record.getMessage()
+		if self.usesTime():
+			record.asctime = self.formatTime(record, self.datefmt)
+		message = self.formatMessage(record)
+
+		if exc_text:
+			if message[-1:] != "\n":
+				message = message + "\n"
+			message = message + exc_text
+
+		return message
