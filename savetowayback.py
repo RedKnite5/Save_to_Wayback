@@ -8,24 +8,25 @@
 
 from __future__ import annotations
 
-import logging
-import logging.config
-import sys
-import time
-from os import path
-from os import getenv
 from collections import deque
 from collections.abc import Callable, Sequence
-from urllib.parse import urljoin
 from functools import partial
-import signal
 import json
-from typing import Any, NoReturn
+import logging
+import logging.config
+from os import getenv
+from os import path
+import signal
+import sys
+import time
 from types import FrameType, TracebackType
+from typing import Any, NoReturn
+from urllib.parse import urljoin
 
 import bs4
-import requests
 from dotenv import load_dotenv
+import requests
+import requests.exceptions as req_excepts
 import savepagenow as save
 from savepagenow import exceptions as SPN_exceptions
 
@@ -167,11 +168,12 @@ class Saved:
 		self.save()
 
 	def try_update(self, url: str, index: int, first: bool) -> None:
-		saver = Link_Adder(first=first)
+		saver = LinkAdder(first=first)
 		try:
 			saver.add_link(url)
 		finally:
-			logger.info(f"Updated {index + 1}: {{url}}", extra={"url": saver.last_url})
+			extra = {"url": saver.last_url}
+			logger.info(f"Updated {index + 1}: {{url}}", extra=extra)
 			if saver.last_url:
 				self.lines[index] = saver.last_url
 				self.save()
@@ -184,8 +186,8 @@ class Saved:
 				continue
 			self.try_update(url, index, index == start)
 
-class Link_Adder:
-	def __init__(self, url="", first: bool = False):
+class LinkAdder:
+	def __init__(self, url: str = "", first: bool = False):
 		self.last_url: str = ""
 		if first:
 			self.sleep_time = 0
@@ -211,7 +213,7 @@ class Link_Adder:
 		expected_errors = (
 			ConnectionTimeoutError,
 			SPN_exceptions.WaybackRuntimeError,
-			requests.exceptions.SSLError,   # maybe move this to a more specific location?
+			req_excepts.SSLError,   # maybe move this to a more specific location?
 		)
 		extra = {}
 		errors = 0
@@ -224,13 +226,19 @@ class Link_Adder:
 				self.sleep_time = DEFAULT_DELAY
 				return
 			except save.BlockedByRobots as exc:
-				logger.error(f"Error {errors} Skipping blocked by robots: {{url}}, {exc}", extra=extra)
+				logger.error(
+					f"Error {errors} Skipping blocked by robots: {{url}}, {exc}",
+					extra=extra
+				)
 				# should not save in this case
 				self.sleep_time = BLOCKED_BY_ROBOTS_DELAY
 				return
 			except SPN_exceptions.TooManyRequests as exc:
 				errors += 1
-				logger.warning(f"Error {errors}: {{url}}, TooManyRequests: {exc}", extra=extra)
+				logger.warning(
+					f"Error {errors}: {{url}}, TooManyRequests: {exc}",
+					extra=extra
+				)
 
 				if isinstance(link, IMHLink) and errors >= 2:
 					new_url = link.new_url_with_redirect(link.url)
@@ -239,11 +247,17 @@ class Link_Adder:
 				self.sleep_time = too_many_reqs_delay(errors)
 			except expected_errors as exc:
 				errors += 1
-				logger.warning(f"Error {errors}: {{url}}, {type(exc)}: {exc}", extra=extra)
+				logger.warning(
+					f"Error {errors}: {{url}}, {type(exc)}: {exc}",
+					extra=extra
+				)
 				self.sleep_time = too_many_reqs_delay(errors)
 			except Exception as exc:
 				errors += 1
-				logger.warning(f"Error Unknown {errors}: {{url}}, {type(exc)}: {exc}", extra=extra)
+				logger.warning(
+					f"Error Unknown {errors}: {{url}}, {type(exc)}: {exc}",
+					extra=extra
+				)
 				self.sleep_time = too_many_reqs_delay(errors)
 
 def get_elements(url: str, func: TagIdentifier) -> list[bs4.element.Tag]:
@@ -273,14 +287,24 @@ class WebsiteLink:
 		return f"Link(\"{self.url}\")"
 
 	def attempt_get_next(self) -> WebsiteLink:
+		catch_exceptions = (
+			req_excepts.ConnectionError,
+			req_excepts.ReadTimeout
+		)
 		for i in range(10):  # try 10 times
 			try:
 				self.get_next()
 				return self
-			except (requests.exceptions.ConnectionError, requests.exceptions.ReadTimeout) as exc:
-				logger.warning(f"Error {i+1} getting next: {{url}}, {exc}", extra={"url": self.url})
+			except catch_exceptions as exc:
+				logger.warning(
+					f"Error {i+1} getting next: {{url}}, {exc}",
+					extra={"url": self.url}
+				)
 				time.sleep(1)
-		logger.error("Error could not get next from: {url}. Skipping", extra={"url": self.url})
+		logger.error(
+			"Error could not get next from: {url}. Skipping",
+			extra={"url": self.url}
+		)
 		return WebsiteLink("")
 
 class XenForoLink(WebsiteLink):
@@ -379,7 +403,10 @@ class NHLink(WebsiteLink):
 		return self.url
 
 	def comp_format(self) -> str:
-		return self.URL_PRFIX + self.url.strip()[len(self.URL_PRFIX):].split("/")[0]
+		url = self.url.strip()
+		url_path = url[len(self.URL_PRFIX):]
+		url_parts = url_path.split("/")
+		return self.URL_PRFIX + url_parts[0]
 
 class IMHLink(WebsiteLink):
 	URL_PRFIX = IMH_URL
@@ -406,7 +433,7 @@ class IMHLink(WebsiteLink):
 			return True
 		except (AssertionError, KeyError):
 			return False
-	
+
 	def gallery_to_view(self, url):
 		return self.make_new_url(ensure_endswith(url, "/"))
 
@@ -438,7 +465,10 @@ class IMHLink(WebsiteLink):
 		return pages, is_last_page
 
 	def get_next(self) -> str:
-		logger.debug("Getting next imh style url from {url}", extra={"url": self.url})
+		logger.debug(
+			"Getting next imh style url from {url}",
+			extra={"url": self.url}
+		)
 
 		new_url = self.new_url_with_redirect(self.url)
 
@@ -481,8 +511,8 @@ class AO3Link(WebsiteLink):
 		if "/chapters/" not in self.url:
 			return
 		base = self.url.split("/chapters/")[0]
-		Link_Adder(base + "?view_full_work=true")
-		Link_Adder(base + "?view_adult=true&view_full_work=true")
+		LinkAdder(base + "?view_full_work=true")
+		LinkAdder(base + "?view_adult=true&view_full_work=true")
 
 	def get_next(self) -> str:
 		if self.url.endswith("view_full_work=true"):
@@ -513,7 +543,9 @@ class AO3Link(WebsiteLink):
 		return self.url
 
 	def comp_format(self) -> str:
-		return cut_end(self.url.strip(), "?view_adult=true").split("chapters")[0]
+		url = self.url.strip()
+		url_base = cut_end(url, "?view_adult=true")
+		return url_base.split("chapters")[0]
 
 	is_updatatable = True
 
@@ -564,13 +596,19 @@ def pick_url_to_save(link: WebsiteLink, url_original: str) -> str:
 def check_redirect(url: str) -> str:
 	try:
 		r = requests.head(url, timeout=60)
-	except requests.exceptions.Timeout:
-		logger.warning("redirection check on {url} timed out", extra={"url": url})
+	except req_excepts.Timeout:
+		logger.warning(
+			"redirection check on {url} timed out",
+			extra={"url": url}
+		)
 		return ""
 
 	location = r.headers.get("location")
 	if location is not None and location != url:
-		logger.debug(f"redirected from {{url}} to {location}", extra={"url": url})
+		logger.debug(
+			f"redirected from {{url}} to {location}",
+			extra={"url": url}
+		)
 		return location
 	return ""
 
@@ -600,7 +638,7 @@ def append_update_extras(url: str, filename: str=UPDATE_EXTRAS) -> None:
 
 def save_url_list(urls: Sequence[str], saved: Saved, save_to_new: bool) -> None:
 	url_queue = deque(url.strip() for url in urls)
-	saver = Link_Adder(first=True)
+	saver = LinkAdder(first=True)
 	for url in urls:
 		url_queue.popleft()
 		if saved.is_saved(url):
