@@ -92,6 +92,7 @@ class Timeout:
 
 open_utf8 = partial(open, encoding="utf-8")
 
+# TODO: https://stackoverflow.com/questions/58657285/how-does-loggings-extra-argument-work
 
 def setup_logging() -> logging.Logger:
 	with open_utf8("logging_config.json") as file:
@@ -235,7 +236,7 @@ class LinkAdder:
 			except SPN_exceptions.TooManyRequests as exc:
 				errors += 1
 				logger.warning(
-					f"Error {errors}: {{url}}, TooManyRequests",
+					f"Error {errors}: {{url}}",
 					exc_info=exc,
 					extra=extra
 				)
@@ -727,7 +728,7 @@ def main() -> None:
 		logger.critical("Uncaught Fatal Exception")
 		raise
 	finally:
-		logger.info("Stopping")
+		logger.debug("Stopping")
 
 
 if __name__ == "__main__":
