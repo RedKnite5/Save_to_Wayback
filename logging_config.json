@@ -2,12 +2,10 @@
 	"version": 1,
 	"formatters": {
 		"files": {
-			"()": "stw_formatters.FileFormatter",
-			"url": "url"
+			"()": "stw_formatters.FileFormatter"
 		},
 		"shorten_urls": {
 			"()": "stw_formatters.STDOutFormatter",
-			"url": "url",
 			"datefmt": "%b-%d %H:%M:%S"
 		}
 	},

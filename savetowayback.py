@@ -5,11 +5,12 @@
 # used APR/26/23
 # used DEC/19/23
 # used MAY/5/24 -u 954
+# used JUN/11/24 -u 1128
 
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from functools import partial
 import json
 import logging
@@ -20,7 +21,7 @@ import signal
 import sys
 import time
 from types import FrameType, TracebackType
-from typing import Any, NoReturn
+from typing import Any, NoReturn, override
 from urllib.parse import urljoin
 
 import bs4
@@ -29,7 +30,6 @@ import requests
 import requests.exceptions as req_excepts
 import savepagenow as save
 from savepagenow import exceptions as SPN_exceptions
-
 
 DATA_FOLDER	= "data"
 
@@ -61,13 +61,21 @@ RR_URL  = "https://www.royalroad.com/"
 # NH has robots.txt tell wayback to not save
 
 # fix redirects
-# https://imhentai.xxx/view/723747/1/
-# https://imhentai.xxx/view/930947/1/
-
 # https://imhentai.xxx/gallery/764389/
 # https://imhentai.xxx/gallery/905223/
 
-TagIdentifier = Callable[[bs4.element.Tag], bool]
+type TagIdentifier = Callable[[bs4.element.Tag], bool]
+type _ArgsType = tuple[object, ...] | Mapping[str, object]
+type ExceptionInfo = (
+	bool
+	| tuple[
+		type[BaseException],
+		BaseException,
+		TracebackType | None
+	]
+	| tuple[None, None, None]
+	| None
+)
 
 class ConnectionTimeoutError(RuntimeError):
 	pass
@@ -92,15 +100,32 @@ class Timeout:
 
 open_utf8 = partial(open, encoding="utf-8")
 
-# TODO: https://stackoverflow.com/questions/58657285/how-does-loggings-extra-argument-work
+class FlexibleLogger(logging.Logger):
+	def _log(self,
+			level: int,
+			msg: object,
+			args: _ArgsType,
+			exc_info: ExceptionInfo = None,
+			extra: Mapping[str, object] | None = None,
+			stack_info: bool = False,
+			stacklevel: int = 1,
+			**kwargs: object) -> None:
+		if extra is not None:
+			extra = dict(extra)
+			extra.update(kwargs)
+		else:
+			extra = kwargs
+
+		super()._log(level, msg, args, exc_info, extra, stack_info, stacklevel)
 
 def setup_logging() -> logging.Logger:
 	with open_utf8("logging_config.json") as file:
 		config = json.load(file)
 	logging.config.dictConfig(config)
 
-	return logging.getLogger("savetowayback")
+	logging.setLoggerClass(FlexibleLogger)
 
+	return logging.getLogger("savetowayback")
 
 logger = setup_logging()
 
@@ -164,7 +189,7 @@ class Saved:
 		if not last:
 			return
 		self.add(last)
-		logger.debug("appending {url} to lines", extra={"url": last})
+		logger.debug("appending {url} to lines", url=last)
 		self.save()
 
 	def try_update(self, url: str, index: int, first: bool) -> None:
@@ -172,9 +197,8 @@ class Saved:
 		try:
 			saver.add_link(url)
 		finally:
-			extra = {"url": saver.last_url}
-			logger.info(f"Updated {index + 1}: {{url}}", extra=extra)
 			if saver.last_url:
+				logger.info(f"Updated {index + 1}: {{url}}", url=saver.last_url)
 				self.lines[index] = saver.last_url
 				self.save()
 
@@ -197,7 +221,7 @@ class LinkAdder:
 			self.add_link(url)
 
 	def add_link(self, url: str) -> str:
-		logger.debug("add link {url}", extra={"url": url})
+		logger.debug("add link {url}", url=url)
 		self.last_url = ""
 
 		link = make_link(url.strip())
@@ -214,12 +238,10 @@ class LinkAdder:
 			SPN_exceptions.UnknownError,
 			req_excepts.SSLError,   # maybe move this to a more specific location?
 		)
-		extra = {}
 		errors = 0
 		while True:
 			try:
 				time.sleep(self.sleep_time)
-				extra = {"url": link}
 				capture_with_logging(link)
 				self.last_url = pick_url_to_save(link, url)
 				self.sleep_time = DEFAULT_DELAY
@@ -228,7 +250,7 @@ class LinkAdder:
 				logger.error(
 					f"Error {errors} Skipping blocked by robots: {{url}}",
 					exc_info=exc,
-					extra=extra
+					url=link
 				)
 				# should not save in this case
 				self.sleep_time = BLOCKED_BY_ROBOTS_DELAY
@@ -238,7 +260,7 @@ class LinkAdder:
 				logger.warning(
 					f"Error {errors}: {{url}}",
 					exc_info=exc,
-					extra=extra
+					url=link
 				)
 
 				if isinstance(link, IMHLink) and errors >= 2:
@@ -251,7 +273,7 @@ class LinkAdder:
 				logger.warning(
 					f"Error {errors}: {{url}}",
 					exc_info=exc,
-					extra=extra
+					url=link
 				)
 				self.sleep_time = too_many_reqs_delay(errors)
 			except Exception as exc:
@@ -259,7 +281,7 @@ class LinkAdder:
 				logger.warning(
 					f"Error Unknown {errors}: {{url}}",
 					exc_info=exc,
-					extra=extra
+					url=link
 				)
 				self.sleep_time = too_many_reqs_delay(errors)
 
@@ -302,12 +324,12 @@ class WebsiteLink:
 				logger.warning(
 					f"Error {i+1} getting next: {{url}}",
 					exc_info=exc,
-					extra={"url": self.url}
+					url=self.url
 				)
 				time.sleep(1)
 		logger.error(
 			"Error could not get next from: {url}. Skipping",
-			extra={"url": self.url}
+			url=self.url
 		)
 		return WebsiteLink("")
 
@@ -367,7 +389,7 @@ class FFLink(WebsiteLink):
 			return self.url
 		# assert btns[0]["onclick"].startswith("self.location='")
 
-		url_end = btns[0]["onclick"][15:][:-1]
+		url_end = btns[0]["onclick"][15:][:-1]  # TODO: name magic number 15
 		if isinstance(url_end, str):
 			self.url = urljoin(self.URL_PRFIX, url_end)
 			return self.url
@@ -377,6 +399,7 @@ class FFLink(WebsiteLink):
 
 class NHLink(WebsiteLink):
 	URL_PRFIX = NH_URL
+	BASE_LENGTH = len(URL_PRFIX)
 	@staticmethod
 	def check_nh(tag: bs4.element.Tag) -> bool:
 		if "404 – Not Found" in tag.text:
@@ -384,14 +407,12 @@ class NHLink(WebsiteLink):
 		return False
 
 	def make_new_url(self, url: str) -> str:
-		BASE_LENGTH = len(self.URL_PRFIX)
-
 		url = url.strip("/") + "/"
-		url_ending = url[BASE_LENGTH:]
+		url_ending = url[self.BASE_LENGTH:]
 		id_len = len(url_ending.split("/")[0])
 
 		new_url = ""
-		if url[BASE_LENGTH + id_len + 1:].count("/") > 0:
+		if url[self.BASE_LENGTH + id_len + 1:].count("/") > 0:
 			new_url = self.increment_page(url)
 		else:
 			new_url = url + "1"
@@ -478,7 +499,7 @@ class IMHLink(WebsiteLink):
 	def get_next(self) -> str:
 		logger.debug(
 			"Getting next imh style url from {url}",
-			extra={"url": self.url}
+			url=self.url
 		)
 
 		new_url = self.new_url_with_redirect(self.url)
@@ -489,7 +510,7 @@ class IMHLink(WebsiteLink):
 			# should not write to saved file in this case
 			# currently does
 			append_update_extras(new_url)
-			logger.error("new redirecting url: {url}", extra={"url": new_url})
+			logger.error("new redirecting url: {url}", url=new_url)
 			self.url = ""
 			return self.url
 
@@ -596,7 +617,8 @@ def make_link(url: str) -> WebsiteLink:
 	return WebsiteLink(url)
 
 def pick_url_to_save(link: WebsiteLink, url_original: str) -> str:
-	# TODO: in the case of redirection the original case should instead return the base form of the link url
+	# TODO: in the case of redirection the original case should instead return
+	# the base form of the link url
 	if link.is_updatatable:
 		return link.url
 	#if link.can_redirect() and comp_format(link.url) != comp_format(url_original):
@@ -610,7 +632,7 @@ def check_redirect(url: str) -> str:
 	except req_excepts.Timeout:
 		logger.warning(
 			"redirection check on {url} timed out",
-			extra={"url": url}
+			url=url
 		)
 		return ""
 
@@ -618,7 +640,7 @@ def check_redirect(url: str) -> str:
 	if location is not None and location != url:
 		logger.debug(
 			f"redirected from {{url}} to {location}",
-			extra={"url": url}
+			url=url
 		)
 		return location
 	return ""
@@ -632,7 +654,7 @@ def capture_with_logging(link: WebsiteLink) -> None:
 			accept_cache=True,
 			authenticate=True
 		)
-	logger.info("Saved: {url}", extra={"url": link})
+	logger.info("Saved: {url}", url=link)
 
 def too_many_reqs_delay(errors: int) -> int:
 	return int(min(60 * 2 * 2**errors, 4*60*60))
@@ -653,7 +675,7 @@ def save_url_list(urls: Sequence[str], saved: Saved, save_to_new: bool) -> None:
 	for url in urls:
 		url_queue.popleft()
 		if saved.is_saved(url):
-			logger.info("is saved, skipping: {url}", extra={"url": url})
+			logger.info("is saved, skipping: {url}", url=url)
 			continue
 		last = save_format(saver.add_link(url))
 		saved.add_last_to_saved(last)
