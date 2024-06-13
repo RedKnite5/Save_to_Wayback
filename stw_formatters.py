@@ -11,6 +11,7 @@ type ExceptionInfo = (
 		TracebackType | None
 	]
 	| tuple[None, None, None]
+	| BaseException
 	| None
 )
 
@@ -60,7 +61,10 @@ class STDOutFormatter(logging.Formatter):
 			else:
 				exc_name = "None"
 		else:
-			exc_name = "None"
+			if isinstance(ei, BaseException):
+				exc_name = type(ei).__name__
+			else:
+				exc_name = "None"
 		return exc_name + " "
 
 
@@ -82,7 +86,6 @@ class FileFormatter(logging.Formatter):
 		if record.exc_info:
 			message += self.formatException(record.exc_info)
 
-
 		return message
 
 	def formatException(self, ei: ExceptionInfo) -> str:
@@ -94,7 +97,11 @@ class FileFormatter(logging.Formatter):
 				exc_name = "None"
 				exc_args = "Empty"
 		else:
-			exc_name = "None"
-			exc_args = "Empty"
+			if isinstance(ei, BaseException):
+				exc_name = type(ei).__name__
+				exc_args = str(ei)
+			else:
+				exc_name = "None"
+				exc_args = "Empty"
 
 		return f"\n{exc_name}: {exc_args}"

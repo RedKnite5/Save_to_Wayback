@@ -74,6 +74,7 @@ type ExceptionInfo = (
 		TracebackType | None
 	]
 	| tuple[None, None, None]
+	| BaseException
 	| None
 )
 
@@ -101,6 +102,7 @@ class Timeout:
 open_utf8 = partial(open, encoding="utf-8")
 
 class FlexibleLogger(logging.Logger):
+	@override
 	def _log(self,
 			level: int,
 			msg: object,
@@ -342,6 +344,7 @@ class XenForoLink(WebsiteLink):
 			return False
 		return True
 
+	@override
 	def get_next(self) -> str:
 		btns = get_elements(self.url, self.check_btn)
 		if (len(btns) < 2
@@ -353,6 +356,7 @@ class XenForoLink(WebsiteLink):
 		self.url = urljoin(self.URL_PRFIX, btns[0].attrs["href"])
 		return self.url
 
+	@override
 	def comp_format(self) -> str:
 		return self.url.strip().split("/page-")[0].strip("/")
 
@@ -366,6 +370,8 @@ class SVLink(XenForoLink):
 
 class QQLink(XenForoLink):
 	URL_PRFIX = QQ_URL
+	# TODO: check this is still correct given the recent QQ update
+	@override
 	@staticmethod
 	def check_btn(tag: bs4.element.Tag) -> bool:
 		if (tag.name == "a"
@@ -382,6 +388,7 @@ class FFLink(WebsiteLink):
 			return True
 		return False
 
+	@override
 	def get_next(self) -> str:
 		btns = get_elements(self.url, self.check_btn)
 		if len(btns) < 2 or btns[0].get("onclick") != btns[1].get("onclick"):
@@ -425,6 +432,7 @@ class NHLink(WebsiteLink):
 		parts[-2] = str(page + 1)
 		return "/".join(parts)
 
+	@override
 	def get_next(self) -> str:
 		new_url = self.make_new_url(self.url)
 
@@ -434,6 +442,7 @@ class NHLink(WebsiteLink):
 		self.url = new_url
 		return self.url
 
+	@override
 	def comp_format(self) -> str:
 		url = self.url.strip()
 		url_path = url[len(self.URL_PRFIX):]
@@ -496,6 +505,7 @@ class IMHLink(WebsiteLink):
 		is_last_page = bool(soup.find_all(self.make_imh_checker(pages)))
 		return pages, is_last_page
 
+	@override
 	def get_next(self) -> str:
 		logger.debug(
 			"Getting next imh style url from {url}",
@@ -508,7 +518,6 @@ class IMHLink(WebsiteLink):
 
 		if not pages:
 			# should not write to saved file in this case
-			# currently does
 			append_update_extras(new_url)
 			logger.error("new redirecting url: {url}", url=new_url)
 			self.url = ""
@@ -523,6 +532,7 @@ class IMHLink(WebsiteLink):
 		self.url = new_url
 		return self.url
 
+	@override
 	def comp_format(self) -> str:
 		url = self.url.strip().strip("/")
 		if "view" in url:
@@ -546,6 +556,7 @@ class AO3Link(WebsiteLink):
 		LinkAdder(base + "?view_full_work=true")
 		LinkAdder(base + "?view_adult=true&view_full_work=true")
 
+	@override
 	def get_next(self) -> str:
 		if self.url.endswith("view_full_work=true"):
 			self.url = ""
@@ -574,6 +585,7 @@ class AO3Link(WebsiteLink):
 		self.url = ""
 		return self.url
 
+	@override
 	def comp_format(self) -> str:
 		url = self.url.strip()
 		url_base = cut_end(url, "?view_adult=true")
@@ -589,6 +601,7 @@ class RRLink(WebsiteLink):
 			return True
 		return False
 
+	@override
 	def get_next(self) -> str:
 		btns = get_elements(self.url, self.check_btn)
 		if btns:
@@ -601,6 +614,7 @@ class RRLink(WebsiteLink):
 	is_updatatable = True
 
 def make_link(url: str) -> WebsiteLink:
+	# could try to do something with subclasshook here
 	link_classes = (
 		FFLink,
 		SBLink,
@@ -638,7 +652,7 @@ def check_redirect(url: str) -> str:
 
 	location = r.headers.get("location")
 	if location is not None and location != url:
-		logger.debug(
+		logger.info(
 			f"redirected from {{url}} to {location}",
 			url=url
 		)
@@ -663,7 +677,7 @@ def write_saved(lines: Sequence[str], filename: str) -> None:
 	with open_utf8(filename, "w") as save_file:
 		save_file.write("\n".join(lines))
 
-def append_update_extras(url: str, filename: str=UPDATE_EXTRAS) -> None:
+def append_update_extras(url: str, filename: str = UPDATE_EXTRAS) -> None:
 	if not SAVE:
 		return
 	with open_utf8(filename, "a") as file:
