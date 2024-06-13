@@ -31,21 +31,19 @@ import requests.exceptions as req_excepts
 import savepagenow as save
 from savepagenow import exceptions as SPN_exceptions
 
-DATA_FOLDER	= "data"
+# TODO: on repeated errors check if page has already been saved
+# TODO: ff comp_format
 
+# ffn now has NOARCHIVE and doesnt work
+# NH has robots.txt tell wayback to not save
+
+DATA_FOLDER	= "data"
 NEW_URLS = path.join(DATA_FOLDER, "new_urls.txt")
 SAVED_URLS = path.join(DATA_FOLDER, "saved.txt")
 UPDATE_EXTRAS = path.join(DATA_FOLDER, "update_extras.txt")
 DEFAULT_DELAY = 45
 BLOCKED_BY_ROBOTS_DELAY = 120
 SAVE = True
-
-
-load_dotenv()
-EMAIL = getenv("SAVEPAGENOW_EMAIL")
-
-# TODO: on repeated errors check if page has already been saved
-# TODO: ff comp_format
 
 FF_URL  = "https://www.fanfiction.net/"
 SB_URL  = "https://forums.spacebattles.com/"
@@ -56,13 +54,8 @@ IMH_URL = "https://imhentai.xxx/"
 AO3_URL = "https://archiveofourown.org/"
 RR_URL  = "https://www.royalroad.com/"
 
-
-# ffn now has NOARCHIVE and doesnt work
-# NH has robots.txt tell wayback to not save
-
-# fix redirects
-# https://imhentai.xxx/gallery/764389/
-# https://imhentai.xxx/gallery/905223/
+load_dotenv()
+EMAIL = getenv("SAVEPAGENOW_EMAIL")
 
 type TagIdentifier = Callable[[bs4.element.Tag], bool]
 type _ArgsType = tuple[object, ...] | Mapping[str, object]
