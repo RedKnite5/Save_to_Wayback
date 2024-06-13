@@ -2,10 +2,10 @@
 	"version": 1,
 	"formatters": {
 		"files": {
-			"()": "stw_formatters.FileFormatter"
+			"()": "savetowayback.FileFormatter"
 		},
 		"shorten_urls": {
-			"()": "stw_formatters.STDOutFormatter",
+			"()": "savetowayback.STDOutFormatter",
 			"datefmt": "%b-%d %H:%M:%S"
 		}
 	},
