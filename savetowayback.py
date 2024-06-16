@@ -21,7 +21,7 @@ import signal
 import sys
 import time
 from types import FrameType, TracebackType
-from typing import Any, NoReturn, override
+from typing import Any, NoReturn, overload, override, TypeVar
 from urllib.parse import urljoin
 
 import bs4
@@ -30,6 +30,8 @@ import requests
 import requests.exceptions as req_excepts
 import savepagenow as save
 from savepagenow import exceptions as SPN_exceptions
+
+from constants import *
 
 # TODO: on repeated errors check if page has already been saved
 # TODO: ff comp_format
@@ -45,31 +47,11 @@ DEFAULT_DELAY = 45
 BLOCKED_BY_ROBOTS_DELAY = 120
 SAVE = True
 
-FF_URL  = "https://www.fanfiction.net/"
-SB_URL  = "https://forums.spacebattles.com/"
-SV_URL  = "https://forums.sufficientvelocity.com/"
-QQ_URL  = "https://forum.questionablequesting.com/"
-NH_URL  = "https://nhentai.net/g/"
-IMH_URL = "https://imhentai.xxx/"
-AO3_URL = "https://archiveofourown.org/"
-RR_URL  = "https://www.royalroad.com/"
-
 load_dotenv()
 EMAIL = getenv("SAVEPAGENOW_EMAIL")
 
 type TagIdentifier = Callable[[bs4.element.Tag], bool]
 type _ArgsType = tuple[object, ...] | Mapping[str, object]
-type ExceptionInfo = (
-	bool
-	| tuple[
-		type[BaseException],
-		BaseException,
-		TracebackType | None
-	]
-	| tuple[None, None, None]
-	| BaseException
-	| None
-)
 
 class ConnectionTimeoutError(RuntimeError):
 	pass
@@ -113,96 +95,17 @@ class FlexibleLogger(logging.Logger):
 
 		super()._log(level, msg, args, exc_info, extra, stack_info, stacklevel)
 
-def dict_replace(string: str, dictionary: Mapping[str, str]) -> str:
-	for find, replace in dictionary.items():
-		string = string.replace(find, replace)
-	return string
 
-class STDOutFormatter(logging.Formatter):
-	abvreviations = {
-		FF_URL: "FF/",
-		f"{SB_URL}threads/": "SB/",
-		f"{SV_URL}/threads/": "SV/",
-		f"{QQ_URL}threads/": "QQ/",
-		NH_URL: "NH/",
-		IMH_URL: "IMH/",
-		f"{AO3_URL}works/": "AO3/",
-		f"{RR_URL}fiction/": "RR/",
-	}
+def setup_logging() -> logging.Logger:
+	with open_utf8("logging_config.json") as file:
+		config = json.load(file)
+	logging.config.dictConfig(config)
 
-	def __init__(self, *, datefmt: str | None = None):
-		super().__init__(fmt="%(asctime)s %(exc_name)s%(message)s", datefmt=datefmt)
+	logging.setLoggerClass(FlexibleLogger)
 
-	def format(self, record: logging.LogRecord) -> str:
-		url = getattr(record, "url", None)
-		url = str(url)
-		url = dict_replace(url, self.abvreviations)
+	return logging.getLogger("savetowayback")
 
-		record.message = record.getMessage()
-		record.message = record.message.format(url=url)
-
-		exc_name = ""
-		if record.exc_info:
-			exc_name = self.formatException(record.exc_info)
-		record.exc_name = exc_name
-
-		if self.usesTime():
-			record.asctime = self.formatTime(record, self.datefmt)
-		message = self.formatMessage(record)
-
-		return message
-
-	def formatException(self, ei: ExceptionInfo) -> str:
-		if isinstance(ei, tuple):
-			if ei[0] is not None:
-				exc_name = ei[0].__name__
-			else:
-				exc_name = "None"
-		else:
-			if isinstance(ei, BaseException):
-				exc_name = type(ei).__name__
-			else:
-				exc_name = "None"
-		return exc_name + " "
-
-class FileFormatter(logging.Formatter):
-	def __init__(self, *, datefmt: str | None = None):
-		super().__init__(fmt="%(asctime)s %(message)s", datefmt=datefmt)
-
-	def format(self, record: logging.LogRecord) -> str:
-		url = getattr(record, "url", None)
-		url = str(url)
-
-		record.message = record.getMessage()
-		record.message = record.message.format(url=url)
-
-		if self.usesTime():
-			record.asctime = self.formatTime(record, self.datefmt)
-		message = self.formatMessage(record)
-
-		if record.exc_info:
-			message += self.formatException(record.exc_info)
-
-		return message
-
-	def formatException(self, ei: ExceptionInfo) -> str:
-		if isinstance(ei, tuple):
-			if ei[0] is not None:
-				exc_name = ei[0].__name__
-				exc_args = str(ei[1])
-			else:
-				exc_name = "None"
-				exc_args = "Empty"
-		else:
-			if isinstance(ei, BaseException):
-				exc_name = type(ei).__name__
-				exc_args = str(ei)
-			else:
-				exc_name = "None"
-				exc_args = "Empty"
-
-		return f"\n{exc_name}: {exc_args}"
-
+logger = setup_logging()
 
 def cut_end(string: str, ending: str) -> str:
 	if string.endswith(ending):
@@ -214,7 +117,14 @@ def ensure_endswith(string: str, suffix: str) -> str:
 		return string + suffix
 	return string
 
-def getitem[T, D](l: Sequence[T], index: int, default: D = None) -> T | D:
+T = TypeVar("T")  # change to 3.12 generic syntax when pylance supports it
+D = TypeVar("D")
+@overload         # dont use overloads when mypy supports defaults with generics
+def getitem(l: Sequence[T], /, index: int) -> T | None: ...
+@overload
+def getitem(l: Sequence[T], /, index: int, default: D) -> T | D: ...
+
+def getitem(l, /, index, default = None):
 	return l[index] if -len(l) <= index < len(l) else default
 
 def isdigit(s: Any, /) -> bool:
@@ -245,7 +155,7 @@ class Saved:
 			return True
 		return False
 
-	def add(self, item: str) -> None:
+	def add(self, item: str, /) -> None:
 		self.lines.append(item)
 
 	def clear_dupes(self) -> None:
@@ -307,7 +217,7 @@ class LinkAdder:
 
 		return self.last_url
 
-	def save_url(self, link: WebsiteLink, url: str) -> None:
+	def save_url(self, link: WebsiteLink, original_url: str) -> None:
 		expected_errors = (
 			ConnectionTimeoutError,
 			SPN_exceptions.UnknownError,
@@ -318,7 +228,7 @@ class LinkAdder:
 			try:
 				time.sleep(self.sleep_time)
 				capture_with_logging(link)
-				self.last_url = pick_url_to_save(link, url)
+				self.last_url = pick_url_to_save(link, original_url)
 				self.sleep_time = DEFAULT_DELAY
 				return
 			except save.BlockedByRobots as exc:
@@ -687,7 +597,7 @@ class RRLink(WebsiteLink):
 	is_updatatable = True
 
 def make_link(url: str) -> WebsiteLink:
-	# could try to do something with subclasshook here
+	# could try to do something with __init_subclass__ here
 	link_classes = (
 		FFLink,
 		SBLink,
@@ -803,9 +713,9 @@ def parse_args_and_save(saved: Saved) -> None:
 
 	if "-u" in sys.argv:
 		u_index = sys.argv.index("-u")
-		if (start := getitem(sys.argv, u_index+1)) and isdigit(start):
+		if (start_str := getitem(sys.argv, u_index+1)) and isdigit(start_str):
 			given.pop(u_index)
-			start = int(start) - 1
+			start = int(start_str) - 1
 		else:
 			start = 0
 
@@ -819,15 +729,6 @@ def parse_args_and_save(saved: Saved) -> None:
 		save_url_list(urls, saved, save_to_new=True)
 
 	save_url_list(given, saved, save_to_new=False)
-
-def setup_logging() -> logging.Logger:
-	with open_utf8("logging_config.json") as file:
-		config = json.load(file)
-	logging.config.dictConfig(config)
-
-	logging.setLoggerClass(FlexibleLogger)
-
-	return logging.getLogger("savetowayback")
 
 def main() -> None:
 	saved = Saved(SAVED_URLS)
@@ -848,8 +749,6 @@ def main() -> None:
 	finally:
 		logger.debug("Stopping")
 
-
 if __name__ == "__main__":
-	logger = setup_logging()
 	logger.info("Starting")
 	main()
