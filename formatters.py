@@ -13,7 +13,7 @@ class STDOutFormatter(Formatter):
 	abvreviations = {
 		FF_URL: "FF/",
 		f"{SB_URL}threads/": "SB/",
-		f"{SV_URL}/threads/": "SV/",
+		f"{SV_URL}threads/": "SV/",
 		f"{QQ_URL}threads/": "QQ/",
 		NH_URL: "NH/",
 		IMH_URL: "IMH/",

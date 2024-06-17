@@ -5,7 +5,7 @@
 # used APR/26/23
 # used DEC/19/23
 # used MAY/5/24 -u 954
-# used JUN/11/24 -u 1128
+# used JUN/16/24 -u 1135
 
 from __future__ import annotations
 
@@ -38,6 +38,9 @@ from constants import *
 
 # ffn now has NOARCHIVE and doesnt work
 # NH has robots.txt tell wayback to not save
+
+# added /home/veronica/miniconda3/envs/savetowayback/lib/python3.12/site-packages/savepagenow/py.typed
+# should remove when savepagenow gets its own
 
 DATA_FOLDER	= "data"
 NEW_URLS = path.join(DATA_FOLDER, "new_urls.txt")
