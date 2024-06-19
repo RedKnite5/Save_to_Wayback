@@ -326,7 +326,7 @@ class XenForoLink(WebsiteLink):
 	def check_btn(tag: bs4.element.Tag) -> bool:
 		if tag.get("class") != ["pageNav-jump", "pageNav-jump--next"]:
 			return False
-		if tag.text != "Next" or tag.name != "a":
+		if "Next" not in tag.text or tag.name != "a":
 			return False
 		return True
 
@@ -356,15 +356,6 @@ class SVLink(XenForoLink):
 
 class QQLink(XenForoLink):
 	URL_PRFIX = QQ_URL
-	# TODO: check this is still correct given the recent QQ update
-	@override
-	@staticmethod
-	def check_btn(tag: bs4.element.Tag) -> bool:
-		if (tag.name == "a"
-			and tag.get("class") == ["text"]
-			and tag.text == "Next >"):
-			return True
-		return False
 
 class FFLink(WebsiteLink):
 	URL_PRFIX = FF_URL
@@ -617,14 +608,9 @@ def make_link(url: str) -> WebsiteLink:
 	return WebsiteLink(url)
 
 def pick_url_to_save(link: WebsiteLink, url_original: str) -> str:
-	# TODO: in the case of redirection the original case should instead return
-	# the base form of the link url
 	if link.is_updatatable:
 		return link.url
-	#if link.can_redirect() and comp_format(link.url) != comp_format(url_original):
-	#	logger.debug(f"record both {link.url} and {url_original}")
-	#	return link.url, url_original
-	return url_original.strip()
+	return link.comp_format()
 
 def check_redirect(url: str) -> str:
 	try:
